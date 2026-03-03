@@ -4,6 +4,8 @@ import {
   handleCreateWorkspace,
   handleGetWorkspace,
   handleDeleteWorkspace,
+  handleGetRulebook,
+  handleUpdateRulebook,
 } from '../services/workspaceService';
 import {
   handleListRepos,
@@ -57,6 +59,30 @@ router.delete('/workspaces/:workspaceId', async (req: Request, res: Response) =>
     const workspaceId = req.params.workspaceId as string;
     await handleDeleteWorkspace(workspaceId);
     res.status(204).send();
+  } catch (err: any) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+});
+
+// Get the rulebook for a workspace — returns null if not set
+router.get('/workspaces/:workspaceId/rulebook', async (req: Request, res: Response) => {
+  try {
+    const workspaceId = req.params.workspaceId as string;
+    const rulebook = await handleGetRulebook(workspaceId);
+    res.json({ rulebook });
+  } catch (err: any) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+});
+
+// Create or replace the rulebook for a workspace
+// Full replacement — send the entire rulebook object
+router.put('/workspaces/:workspaceId/rulebook', async (req: Request, res: Response) => {
+  try {
+    const workspaceId = req.params.workspaceId as string;
+    const rulebook = req.body;
+    const updated = await handleUpdateRulebook(workspaceId, rulebook);
+    res.json({ rulebook: updated });
   } catch (err: any) {
     res.status(err.status ?? 500).json({ error: err.message });
   }
