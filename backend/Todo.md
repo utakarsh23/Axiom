@@ -61,3 +61,11 @@ src/
 - [ ] `vector-service` — vectorController
 - [ ] `graph-service` — graphController
 - [ ] `ingestion-service` — webhookController
+- [ ] `auth-service` — authController (OAuth + verify endpoints)
+
+---
+
+## Infrastructure
+
+- [ ] `nginx.conf` — reverse proxy routing + `auth_request` for all protected routes
+- [ ] `docker-compose.yml` — internal Docker network, only NGINX exposed on :80/:443

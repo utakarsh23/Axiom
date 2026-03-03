@@ -41,7 +41,7 @@ LLM Service owns two separate model runtimes. They are never combined.
 
 | # | Service | Responsibility |
 |---|---------|---------------|
-| 1 | API Gateway | Entry point for all external requests |
+| 1 | Auth Service + NGINX | GitHub OAuth, JWT issuance, reverse proxy routing |
 | 2 | Workspace Service | Manages workspace + repo registration |
 | 3 | Ingestion Service | Parses repos, emits events |
 | 4 | Graph Service | Owns Neo4j |
@@ -53,6 +53,14 @@ LLM Service owns two separate model runtimes. They are never combined.
 | 10 | Message Bus | NATS or Kafka |
 
 Each service owns its storage. No cross-service direct DB access.
+
+### Network Architecture
+
+- **NGINX** is the only service exposed to the internet (port 80 / 443)
+- All other services run on a Docker internal network — unreachable from outside
+- Every request to a protected route is verified by NGINX via `auth_request /auth/verify` (Auth Service) before being proxied downstream
+- Auth Service sits on port 8080, internal network only — NGINX calls it for verification, never external clients
+- `x-user-id` is injected by NGINX from the `auth_request` response before each proxied request reaches its destination service
 
 ---
 
@@ -327,7 +335,7 @@ Every node/edge: `validFrom`, `validTo`, `commitHash`
 
 ## Graph Query API
 
-Exposed by Graph Service, routed via API Gateway:
+Exposed by Graph Service. Routed via NGINX (`/graph/**` → Graph Service on port 9002). All requests require a valid JWT — NGINX verifies via `auth_request` to Auth Service before proxying.
 
 ```
 GET /graph/:workspaceId                          — full live graph (all repos in workspace)

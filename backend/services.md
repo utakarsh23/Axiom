@@ -4,28 +4,60 @@ Detailed breakdown of every service in the platform — what it owns, what it do
 
 ---
 
-## 1. API Gateway
+## 1. Auth Service + NGINX
 
-**Role:** The single public-facing entry point for all client traffic.
+### Auth Service (port 8080)
 
-### Owns
-- Public HTTP interface
-- Authentication middleware
-- Request routing table
-- Rate limiting logic
+**Role:** Handles GitHub OAuth and JWT issuance only. Not a proxy, not a router.
 
-### Does
-- Validates JWT tokens and GitHub OAuth tokens on every incoming request
-- Routes requests to the appropriate internal service based on path and method
-- Aggregates responses from multiple services when a single client request spans multiple backends
-- Enforces workspace scoping — every request is bound to a workspace before it reaches any downstream service
+#### Owns
+- GitHub OAuth flow (code exchange, access token, user profile fetch)
+- JWT issuance and signing
+- User records (MongoDB — `users` collection)
+- Token verification endpoint (`GET /auth/verify`)
 
-### Does NOT
-- Perform any ingestion or parsing
-- Talk directly to any database (Neo4j, MongoDB, Chroma)
-- Execute business logic of any kind
+#### Does
+- `GET /auth/github` — redirects to GitHub OAuth
+- `GET /auth/github/callback` — exchanges code, creates/updates user, issues JWT
+- `GET /auth/verify` — verifies JWT, returns `{ userId }` — called by NGINX `auth_request`
+- `GET /auth/me` — returns current user profile from token
 
-> The gateway is a traffic layer, not a logic layer.
+#### Does NOT
+- Route or proxy any business traffic
+- Talk to NATS
+- Know anything about workspaces, repos, or code
+
+> Auth Service is called only for login and token verification. It is never in the hot path of business requests.
+
+---
+
+### NGINX (port 80 / 443)
+
+**Role:** Reverse proxy and routing layer. Replaces a Node.js API Gateway entirely.
+
+#### Does
+- Routes all client traffic to the correct downstream service by path prefix
+- Uses `auth_request` directive to verify JWT via Auth Service on every protected route
+- Injects `x-user-id` header from the `auth_request` response into proxied requests
+- SSL termination, rate limiting, load balancing
+
+#### Routing table
+```
+/auth/**           →  Auth Service       (8080)   — no auth_request (public)
+/workspaces/**     →  Workspace Service  (9000)   — auth_request required
+/search/**         →  Search Service     (9006)   — auth_request required
+/docs/**           →  Doc Service        (9005)   — auth_request required
+/ingest/**         →  Ingestion Service  (9001)   — auth_request required
+/graph/**          →  Graph Service      (9002)   — auth_request required
+/ci/**             →  CI/Vuln Service    (9007)   — auth_request required
+```
+
+#### Does NOT
+- Contain any application logic
+- Issue or parse JWTs directly
+- Know anything about workspaces or users
+
+> If Auth Service goes down, login and token verification fail — but all requests from users with valid existing JWTs continue uninterrupted through NGINX. No single point of failure for business traffic.
 
 ---
 
