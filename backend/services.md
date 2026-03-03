@@ -162,6 +162,8 @@ Triggered on `COMMIT_RECEIVED`.
 
 > Ingestion only emits structural truth. Every downstream mutation is a consequence of its events.
 
+> **Parser quality (known issues):** Walker call extraction currently emits all call targets including builtins and prototype methods. `await axios.get` is stored verbatim instead of being collapsed to `axios`. `File` nodes and `DECLARES` edges not yet emitted. Graph hierarchy is currently flat (functions only, no file-level grouping).
+
 ---
 
 ## 4. Graph Service — Neo4j Owner
@@ -197,15 +199,15 @@ Triggered on `COMMIT_RECEIVED`.
 | `IMPORTS` | File → File |
 
 ### Does
-- Creates nodes and edges in response to `ENTITY_CREATED` and `RELATION_ADDED` events
+- Creates and MERGEs nodes in Neo4j by `entityId` (stable SHA-256 hash) when `ENTITY_CREATED` events arrive — idempotent
 - Closes old versions of nodes/edges by setting `validTo` when an update or deletion event arrives
 - Inserts new versions of nodes/edges with `validFrom` set to the new commit
-- On `RELATION_ADDED`: checks if callee exists in workspace → `CALLS` edge; if not → merge `ExternalService` node + `CALLS_EXTERNAL` edge
+- On `RELATION_ADDED`: checks if callee `name` exists in workspace → `CALLS` edge; if not → merge `ExternalService` node + `CALLS_EXTERNAL` edge
 - Links entities across repositories within the same workspace via cross-repo `CALLS` edges
 - Exposes workspace-scoped graph query API:
   - `GET /graph/:workspaceId` — full live graph for all repos in workspace
   - `GET /graph/:workspaceId/repo/:repoId` — scoped to a single repo
-  - `GET /graph/:workspaceId/impact/:entityName` — blast radius (callers + callees, cross-repo)
+  - `GET /graph/:workspaceId/impact/:entityName` — blast radius (callers + callees, cross-repo, 10 hop / 500 node cap)
   - `GET /graph/:workspaceId/timeline?commit=abc123` — graph state at a specific commit
 
 ### Does NOT

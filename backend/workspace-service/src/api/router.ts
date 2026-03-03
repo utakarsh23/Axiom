@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import { WorkspaceModel } from '../model/workspaceModel';
+
 import {
   handleListWorkspaces,
   handleCreateWorkspace,
@@ -102,11 +104,12 @@ router.get('/workspaces/:workspaceId/repos', async (req: Request, res: Response)
 });
 
 // Add a new repo to a workspace
+// installationId is read from the workspace document — never accepted from the client.
+// owner is parsed from gitUrl automatically.
 router.post('/workspaces/:workspaceId/repos', async (req: Request, res: Response) => {
   try {
     const workspaceId = req.params.workspaceId as string;
     const { name, gitUrl, branch, language } = req.body;
-    // language before branch — matches updated handleCreateRepo signature (branch has default)
     const repo = await handleCreateRepo(workspaceId, name, gitUrl, language, branch);
     res.status(201).json({ repo });
   } catch (err: any) {
@@ -114,11 +117,43 @@ router.post('/workspaces/:workspaceId/repos', async (req: Request, res: Response
   }
 });
 
+// Store GitHub App installationId on the workspace.
+// Called server-side during the GitHub App install/redirect flow — never from the frontend directly.
+// PATCH /workspaces/:workspaceId/installation
+// Body: { installationId: number }
+router.patch('/workspaces/:workspaceId/installation', async (req: Request, res: Response) => {
+  try {
+    const workspaceId = req.params.workspaceId as string;
+    const { installationId } = req.body;
+
+    if (!installationId || typeof installationId !== 'number') {
+      res.status(400).json({ error: 'installationId is required and must be a number' });
+      return;
+    }
+
+    const workspace = await WorkspaceModel.findByIdAndUpdate(
+      workspaceId,
+      { installationId },
+      { new: true }
+    ).lean();
+
+    if (!workspace) {
+      res.status(404).json({ error: 'Workspace not found' });
+      return;
+    }
+
+    res.json({ workspace });
+  } catch (err: any) {
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+});
+
+
 // Get a single repo by id within a workspace
 router.get('/workspaces/:workspaceId/repos/:repoId', async (req: Request, res: Response) => {
   try {
     const workspaceId = req.params.workspaceId as string;
-    const repoId = req.params.repoId as string; 
+    const repoId = req.params.repoId as string;
     const repo = await handleGetRepo(workspaceId, repoId);
     res.json({ repo });
   } catch (err: any) {

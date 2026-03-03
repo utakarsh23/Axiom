@@ -37,8 +37,8 @@ function subscribeToRepoAdded(): void {
         const payload = JSON.parse(sc.decode(msg.data));
         logger.info({ owner: payload.owner, repo: payload.repo }, 'REPO_ADDED received');
         await runFullMode(payload);
-      } catch (error: any) {
-        logger.error({ error }, 'Failed to handle REPO_ADDED');
+      } catch (err: any) {
+        logger.error({ err: { message: err?.message, stack: err?.stack } }, 'Failed to handle REPO_ADDED');
       }
     }
   })();
@@ -58,8 +58,8 @@ function subscribeToCommitReceived(): void {
         const payload = JSON.parse(sc.decode(msg.data));
         logger.info({ owner: payload.owner, repo: payload.repo, commitSha: payload.commitSha }, 'COMMIT_RECEIVED');
         await runDiffMode(payload);
-      } catch (error: any) {
-        logger.error({ error }, 'Failed to handle COMMIT_RECEIVED');
+      } catch (err: any) {
+        logger.error({ err: { message: err?.message, stack: err?.stack } }, 'Failed to handle COMMIT_RECEIVED');
       }
     }
   })();

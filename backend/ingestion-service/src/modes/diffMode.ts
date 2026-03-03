@@ -2,7 +2,7 @@ import { getInstallationClient, fetchCommitDiff, fetchFileContent } from '../git
 import { parseFile } from '../parser/index';
 import { extract } from '../extractor/index';
 import { computeFileHashes } from '../hasher/index';
-import { computeDiff } from '../diff/index';
+import { computeDiff, makeEntityId } from '../diff/index';
 import { publishEvents } from '../events/index';
 import { EntityHashModel } from '../model/entityHash.model';
 import { EntityHashes } from '../hasher/index';
@@ -134,7 +134,7 @@ async function runDiffMode(input: DiffModeInput): Promise<void> {
             commitHash: commitSha,
             updatedAt: new Date(),
           },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
       }
 
@@ -148,7 +148,7 @@ async function runDiffMode(input: DiffModeInput): Promise<void> {
 
       processed++;
     } catch (error: any) {
-      logger.error({ filename: file.filename, error }, 'Failed to process file');
+      logger.error({ filePath: file.filename, err: { message: error?.message, stack: error?.stack } }, 'Failed to process file');
     }
   }
 
@@ -166,10 +166,11 @@ async function handleDeletedFile(
   const oldDocs = await EntityHashModel.find({ repoId, filePath });
 
   for (const doc of oldDocs) {
+    const entityId = makeEntityId(workspaceId, repoId, filePath, doc.entityName);
     publishEvents([
       {
         type: 'ENTITY_DELETED',
-        payload: { name: doc.entityName, filePath, repoId, workspaceId, commitHash: commitSha },
+        payload: { entityId, entityName: doc.entityName, filePath, repoId, workspaceId, commitHash: commitSha },
       },
       ...doc.callList.map(callee => ({
         type: 'RELATION_REMOVED' as const,

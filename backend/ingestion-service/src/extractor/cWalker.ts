@@ -1,18 +1,18 @@
-import { Node } from 'web-tree-sitter';
+import Parser from 'web-tree-sitter';
 import { ExtractedEntity, ExtractedImport, ExtractedCall, ExtractionResult } from './types';
 
 // Handles both C and C++ files (.c, .cpp, .cc, .h)
 // TODO: v2 — Cross-service call detection (HTTP clients, sockets etc.)
 // See backend/Todo.md for full list
 
-function walkCTree(root: Node, filePath: string, language: 'c' | 'cpp'): ExtractionResult {
+function walkCTree(root: Parser.SyntaxNode, filePath: string, language: 'c' | 'cpp'): ExtractionResult {
   const entities: ExtractedEntity[] = [];
   const imports: ExtractedImport[] = [];
   const calls: ExtractedCall[] = [];
 
   let currentFunctionName: string | null = null;
 
-  function walk(node: Node): void {
+  function walk(node: Parser.SyntaxNode): void {
     switch (node.type) {
 
       // int foo(int a, int b) {}

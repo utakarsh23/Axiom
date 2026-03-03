@@ -1,4 +1,4 @@
-import { Node } from 'web-tree-sitter';
+import Parser from 'web-tree-sitter';
 import { ExtractedEntity, ExtractedImport, ExtractedCall, ExtractionResult } from './types';
 
 
@@ -16,7 +16,7 @@ import { ExtractedEntity, ExtractedImport, ExtractedCall, ExtractionResult } fro
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'options', 'head']);
 
 function walkTsTree(
-  root: Node,
+  root: Parser.SyntaxNode,
   filePath: string,
 ): ExtractionResult {
   const entities: ExtractedEntity[] = [];
@@ -27,7 +27,7 @@ function walkTsTree(
   // Used to attribute call_expression nodes to their caller
   let currentFunctionName: string | null = null;
 
-  function walk(node: Node): void {
+  function walk(node: Parser.SyntaxNode): void {
     switch (node.type) {
 
       // function foo() {}

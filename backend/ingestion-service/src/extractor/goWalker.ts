@@ -1,17 +1,17 @@
-import { Node } from 'web-tree-sitter';
+import Parser from 'web-tree-sitter';
 import { ExtractedEntity, ExtractedImport, ExtractedCall, ExtractionResult } from './types';
 
 // TODO: v2 — Cross-service call detection (HTTP clients, gRPC, Kafka etc.)
 // See backend/Todo.md for full list
 
-function walkGoTree(root: Node, filePath: string): ExtractionResult {
+function walkGoTree(root: Parser.SyntaxNode, filePath: string): ExtractionResult {
   const entities: ExtractedEntity[] = [];
   const imports: ExtractedImport[] = [];
   const calls: ExtractedCall[] = [];
 
   let currentFunctionName: string | null = null;
 
-  function walk(node: Node): void {
+  function walk(node: Parser.SyntaxNode): void {
     switch (node.type) {
 
       // func foo(a int, b int) int {}

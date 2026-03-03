@@ -5,9 +5,9 @@ import mongoose, { Document, Schema } from 'mongoose';
 interface IRepo extends Document {
   workspaceId: string;
   name: string;
-  gitUrl: string;      // clone URL — used by Ingestion to pull the repo
-  branch: string;      // branch to ingest — defaults to 'main'
-  language: string;    // primary language — e.g. 'typescript', 'python'
+  gitUrl: string;    // clone URL — used by Ingestion to pull the repo
+  branch: string;    // branch to ingest — defaults to 'main'
+  language: string;  // primary language — e.g. 'typescript', 'python'
   createdAt: Date;
   updatedAt: Date;
 }
@@ -15,10 +15,10 @@ interface IRepo extends Document {
 const RepoSchema = new Schema<IRepo>(
   {
     workspaceId: { type: String, required: true },
-    name:        { type: String, required: true },
-    gitUrl:      { type: String, required: true },
-    branch:      { type: String, required: true, default: 'main' },
-    language:    { type: String, required: true },
+    name: { type: String, required: true },
+    gitUrl: { type: String, required: true },
+    branch: { type: String, required: true, default: 'main' },
+    language: { type: String, required: true },
   },
   {
     collection: 'repos',

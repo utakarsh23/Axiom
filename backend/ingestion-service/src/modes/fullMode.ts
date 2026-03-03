@@ -1,10 +1,11 @@
-import { getInstallationClient, fetchRepoTree, fetchFileContent } from "../github/client";
+import { getInstallationClient, fetchRepoTree, fetchFileContent, fetchLatestCommitSha } from "../github/client";
 import { parseFile } from "../parser";
 import { extract } from '../extractor/index';
 import { computeFileHashes } from '../hasher/index';
 import { computeDiff } from '../diff/index';
 import { publishEvents } from '../events/index';
 import { EntityHashModel } from '../model/entityHash.model';
+import { RepoRegistryModel } from '../model/repoRegistry.model';
 import { logger } from '../logger';
 
 
@@ -45,15 +46,20 @@ export interface FullModeInput {
   installationId: number;
   owner: string;
   repo: string;
-  commitSha: string;
+  branch: string;          // default branch — used to resolve commitSha if not provided
+  commitSha?: string;      // optional — if absent, resolved from GitHub HEAD of branch
 }
 
 async function runFullMode(input: FullModeInput): Promise<void> {
-  const { workspaceId, repoId, installationId, owner, repo, commitSha } = input;
+  const { workspaceId, repoId, installationId, owner, repo, branch } = input;
+
+  const octokit = await getInstallationClient(installationId);
+
+  // Resolve commitSha if not provided — fetch latest HEAD of the default branch
+  const commitSha = input.commitSha ?? await fetchLatestCommitSha(octokit, owner, repo, branch);
 
   logger.info({ owner, repo, commitSha }, 'Starting cold start ingestion');
 
-  const octokit = await getInstallationClient(installationId);
 
   // Fetch entire repo file tree at this commit
   const tree = await fetchRepoTree(octokit, owner, repo, commitSha);
@@ -123,7 +129,7 @@ async function runFullMode(input: FullModeInput): Promise<void> {
             commitHash: commitSha,
             updatedAt: new Date(),
           },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
       }
 
@@ -135,7 +141,17 @@ async function runFullMode(input: FullModeInput): Promise<void> {
   }
 
   logger.info({ processed, skipped }, 'FullMode done');
+
+  // Register (installationId, owner, repo) → (workspaceId, repoId) so the webhook
+  // handler can resolve Axiom IDs when GitHub sends future push events for this repo.
+  await RepoRegistryModel.findOneAndUpdate(
+    { installationId, owner, repo },
+    { workspaceId, repoId, defaultBranch: branch, updatedAt: new Date() },
+    { upsert: true }
+  );
+  logger.info({ owner, repo, workspaceId, repoId }, 'RepoRegistry upserted');
 }
 
 export { runFullMode };
+
 

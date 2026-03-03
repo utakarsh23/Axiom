@@ -45,7 +45,8 @@ interface IRulebook {
 // All repos, entities, graphs, and docs live under a workspace.
 interface IWorkspace extends Document {
   name: string;
-  userId: string;      // owner — set by NGINX from auth token via x-user-id header
+  userId: string;          // owner — set by NGINX from auth token via x-user-id header
+  installationId?: number; // GitHub App installation ID — set during GitHub App install callback
   rulebook?: IRulebook;
   createdAt: Date;
   updatedAt: Date;
@@ -53,8 +54,8 @@ interface IWorkspace extends Document {
 
 const LayerRuleSchema = new Schema<ILayerRule>(
   {
-    from:   { type: String, required: true },
-    to:     { type: String, required: true },
+    from: { type: String, required: true },
+    to: { type: String, required: true },
     reason: { type: String, required: true },
   },
   { _id: false }
@@ -64,17 +65,17 @@ const RulebookSchema = new Schema<IRulebook>(
   {
     naming: {
       functions: String,
-      classes:   String,
-      files:     String,
+      classes: String,
+      files: String,
       constants: String,
     },
     comments: {
-      requireJsDoc:     Boolean,
-      minCommentRatio:  Number,
+      requireJsDoc: Boolean,
+      minCommentRatio: Number,
     },
     structure: {
-      maxFunctionLines:  Number,
-      maxFileLines:      Number,
+      maxFunctionLines: Number,
+      maxFileLines: Number,
       forbiddenPatterns: [String],
     },
     architecture: {
@@ -86,8 +87,9 @@ const RulebookSchema = new Schema<IRulebook>(
 
 const WorkspaceSchema = new Schema<IWorkspace>(
   {
-    name:     { type: String, required: true },
-    userId:   { type: String, required: true },
+    name: { type: String, required: true },
+    userId: { type: String, required: true },
+    installationId: { type: Number, default: undefined },
     rulebook: { type: RulebookSchema, default: undefined },
   },
   {

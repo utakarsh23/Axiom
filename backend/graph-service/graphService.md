@@ -42,9 +42,11 @@ This enables:
 | `Endpoint` | HTTP route (Express, FastAPI, etc.) |
 | `ExternalService` | npm package or stdlib — call target only, not parsed |
 
-All internal nodes carry: `name`, `filePath`, `repoId`, `workspaceId`, `kind`, `language`, `validFrom`, `validTo`
+All internal nodes carry: `entityId`, `name`, `filePath`, `repoId`, `workspaceId`, `kind`, `language`, `validFrom`, `validTo`, `createdAt`
 
-`ExternalService` nodes carry: `name`, `workspaceId`, `kind: 'external'`
+`entityId` is a deterministic SHA-256 hash of `workspaceId:repoId:filePath:entityName` (first 24 chars). Used as the MERGE key — enables idempotent upserts regardless of which commit produced the event.
+
+`ExternalService` nodes carry: `name`, `workspaceId`, `kind: 'external'`, `createdAt`
 
 ---
 
@@ -61,13 +63,15 @@ All edges carry: `workspaceId`, `validFrom`, `validTo`
 
 ## Events Consumed
 
+All event payloads use `entityId` (stable SHA-256 hash) + `entityName` as emitted by the ingestion diff engine.
+
 | Event | Action |
 |---|---|
-| `ENTITY_CREATED` | MERGE node — idempotent, safe to replay |
-| `ENTITY_UPDATED` | Close active node (`validTo`), create new version (`validFrom`) |
-| `ENTITY_DELETED` | Close active node (`validTo`) — no hard delete |
-| `RELATION_ADDED` | Check if callee is in workspace → `CALLS` edge; else → `ExternalService` + `CALLS_EXTERNAL` edge |
-| `RELATION_REMOVED` | Close active `CALLS` or `CALLS_EXTERNAL` edge |
+| `ENTITY_CREATED` | `MERGE (e { entityId })` — idempotent, safe to replay |
+| `ENTITY_UPDATED` | Close active node by `entityId` (`validTo = commitHash`), CREATE new version (`validFrom = commitHash`) |
+| `ENTITY_DELETED` | Close active node by `entityId` (`validTo = commitHash`) — no hard delete |
+| `RELATION_ADDED` | Check if callee `name` exists in workspace → `CALLS` edge; else → `ExternalService` + `CALLS_EXTERNAL` edge |
+| `RELATION_REMOVED` | Close active `CALLS` or `CALLS_EXTERNAL` edge — tries both edge types |
 
 ---
 
@@ -138,15 +142,24 @@ src/
 
 ## Key Design Decisions
 
+**`entityId` as MERGE key** — `MERGE (e { entityId })` ensures deduplication by the stable entity identity, not by name or filePath. Payload carries both `entityId` and `entityName` — `entityId` for graph keying, `name` stored as a searchable property.
+
 **MERGE without `validFrom` in identity pattern** — `validFrom` is set in `ON CREATE SET` only. If an event is replayed (NATS at-least-once), it won't create duplicate nodes or edges.
 
-**`language` inherited on update** — `ENTITY_UPDATED` payload doesn't carry `language`. The new node version reads `language` from the old node being closed (`MATCH old ... CREATE e { language: old.language }`).
+**`language` inherited on update** — `ENTITY_UPDATED` payload doesn't carry `language` separately. The new node version reads `language` from the old closed node (`MATCH old ... CREATE e { language: COALESCE($language, old.language) }`).
 
 **`RELATION_REMOVED` tries both edge types** — ingestion payload doesn't specify edge type. Both `CALLS` and `CALLS_EXTERNAL` close queries are run — the one that doesn't match does nothing.
 
-**Blast radius capped at 10 hops / 500 nodes** — prevents infinite traversal on circular dependency graphs (`A → B → C → A`). Neo4j won't traverse the same relationship twice in a single path, but unbounded depth on large graphs is expensive.
+**Blast radius capped at 10 hops / 500 nodes** — prevents infinite traversal on circular dependency graphs.
 
-**ExternalService is workspace-scoped** — `MERGE (ext:ExternalService { name, workspaceId })` ensures one node per package per workspace. Multiple functions calling `axios` share the same node.
+**ExternalService is workspace-scoped** — `MERGE (ext:ExternalService { name, workspaceId })` ensures one node per package per workspace. Multiple functions calling `axios` share the same ExternalService node.
+
+## Known Issues / Upcoming Fixes
+
+- **Noise call targets** — builtin/prototype method names (`toString`, `map`, `filter`, `push`, `forEach`, etc.) are currently stored as CALLS_EXTERNAL edges. To be filtered at the walker layer.
+- **`await axios.get` verbatim** — method calls on HTTP clients (`axios.get`, `axios.post`) stored as literal callee names. To be collapsed to module name (`axios`) at extraction.
+- **No `File` node** — graph currently has no `File` → `Function` hierarchy. `DECLARES` edges and `File` nodes to be added in a future walker pass.
+- **NATS at-least-once** — ingestion events can be replayed; handlers are idempotent via entityId MERGE but edge deduplication via MERGE on relation identity.
 
 ---
 

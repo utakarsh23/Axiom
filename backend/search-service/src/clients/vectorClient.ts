@@ -22,7 +22,7 @@ const queryVector = async (
   try {
     const response = await axios.post<{ results: VectorResult[] }>(
       `${config.vectorService.url}/vector/query`,
-      { workspaceId, queryText, topK }
+      { workspaceId, query: queryText, topK }
     );
     return response.data.results ?? [];
   } catch (err) {

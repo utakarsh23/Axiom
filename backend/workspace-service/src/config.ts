@@ -5,6 +5,9 @@ const config = {
   mongo: {
     uri: process.env.MONGO_URI ?? 'mongodb://localhost:27017/workspace-service',
   },
+  nats: {
+    url: process.env.NATS_URL ?? 'nats://localhost:4222',
+  },
   port: parseInt(process.env.PORT ?? '9000', 10),
   nodeEnv: process.env.NODE_ENV ?? 'development',
   logLevel: process.env.LOG_LEVEL ?? 'info',

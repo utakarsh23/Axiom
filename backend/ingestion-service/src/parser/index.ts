@@ -1,4 +1,4 @@
-import { Parser, Language } from 'web-tree-sitter';
+import Parser from 'web-tree-sitter';
 import path from 'path';
 import { getLanguageConfig } from './grammars';
 import { ParsedFile } from './types';
@@ -7,12 +7,12 @@ import { logger } from '../logger';
 // Parser is initialized once and reused — loading WASM is expensive
 // Language instances are cached after first load
 let parserReady = false;
-const languageCache: Record<string, Language> = {};
+const languageCache: Record<string, Parser.Language> = {};
 
 // Must be called once before parseFile is used (called in service startup)
 async function initParser(): Promise<void> {
-  await Parser.init();
-  parserReady = true;
+    await Parser.init();
+    parserReady = true;
 }
 
 // Returns null for unsupported extensions — caller skips silently
@@ -26,7 +26,7 @@ async function parseFile(filePath: string, content: string): Promise<ParsedFile 
 
         // Load and cache the language grammar
         if (!languageCache[config.language]) {
-            languageCache[config.language] = await Language.load(config.wasmPath);
+            languageCache[config.language] = await Parser.Language.load(config.wasmPath);
         }
 
         const parser = new Parser();
@@ -38,8 +38,8 @@ async function parseFile(filePath: string, content: string): Promise<ParsedFile 
             language: config.language,
             ast,
         };
-    } catch (error: any) {
-        logger.error({ filePath, error }, 'Error parsing file');
+    } catch (err: any) {
+        logger.error({ filePath, err: { message: err?.message, stack: err?.stack } }, 'Error parsing file');
         return null;
     }
 }

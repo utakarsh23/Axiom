@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 import { RepoModel } from '../model/repoModel';
+import { WorkspaceModel } from '../model/workspaceModel';
+import { publishRaw } from '../events/index';
 import logger from '../logger';
 
 // Helper — returns 400 error for invalid MongoDB ObjectId format
@@ -7,6 +9,21 @@ const assertValidObjectId = (id: string, label: string): void => {
   if (!mongoose.isValidObjectId(id)) {
     throw Object.assign(new Error(`Invalid ${label} format`), { status: 400 });
   }
+};
+
+// Parses the GitHub owner (org or user login) from a GitHub git URL.
+// Supports both HTTPS and SSH forms:
+//   https://github.com/owner/repo.git  →  owner
+//   git@github.com:owner/repo.git      →  owner
+const parseOwnerFromGitUrl = (gitUrl: string): string => {
+  const match = gitUrl.match(/github\.com[/:]([^/]+)\//);
+  if (!match) {
+    throw Object.assign(
+      new Error('Cannot parse GitHub owner from gitUrl — expected https://github.com/owner/repo or git@github.com:owner/repo'),
+      { status: 400 }
+    );
+  }
+  return match[1];
 };
 
 // List all repos in a workspace
@@ -25,7 +42,7 @@ const createRepo = async (
   name: string,
   gitUrl: string,
   branch: string,
-  language: string
+  language: string,
 ) => {
   const repo = new RepoModel({ workspaceId, name, gitUrl, branch, language });
   return repo.save();
@@ -50,7 +67,9 @@ const handleListRepos = async (workspaceId: string) => {
   }
 };
 
-// Validates input and creates a repo in a workspace
+// Validates input and creates a repo in a workspace.
+// installationId is read from the workspace document — never accepted from the client.
+// owner is parsed from the gitUrl — no need for the client to send it separately.
 const handleCreateRepo = async (
   workspaceId: string,
   name: string,
@@ -71,8 +90,39 @@ const handleCreateRepo = async (
     throw Object.assign(new Error('language is required'), { status: 400 });
   }
 
+  // Parse owner from gitUrl — fails fast with a clear error if the URL is malformed
+  const owner = parseOwnerFromGitUrl(gitUrl.trim());
+
+  // Fetch installationId from the workspace — set during the GitHub App install flow
+  const workspace = await WorkspaceModel.findById(workspaceId).lean();
+  if (!workspace) {
+    throw Object.assign(new Error('Workspace not found'), { status: 404 });
+  }
+  if (!workspace.installationId) {
+    throw Object.assign(
+      new Error('GitHub App is not installed for this workspace — complete the GitHub App installation first'),
+      { status: 400 }
+    );
+  }
+
+  const installationId = workspace.installationId;
+
   try {
-    return await createRepo(workspaceId, name.trim(), gitUrl.trim(), branch, language.trim());
+    const repo = await createRepo(workspaceId, name.trim(), gitUrl.trim(), branch, language.trim());
+
+    // Kick off cold start ingestion — Ingestion Service listens for REPO_ADDED and runs Full Mode.
+    // commitSha is omitted intentionally — Ingestion resolves the latest HEAD commit from GitHub.
+    publishRaw('REPO_ADDED', {
+      workspaceId,
+      repoId: repo._id.toString(),
+      installationId,
+      owner,
+      repo: name.trim(),
+      branch,
+    });
+
+    logger.info({ workspaceId, repoId: repo._id }, 'REPO_ADDED published to NATS');
+    return repo;
   } catch (err: any) {
     // Duplicate key — repo name already exists in this workspace
     if (err.code === 11000) {
@@ -115,7 +165,7 @@ const handleDeleteRepo = async (workspaceId: string, repoId: string) => {
   }
 
   // Validate ObjectId format before querying — Mongoose throws CastError otherwise
-  assertValidObjectId(repoId, 'repoId');
+  assertValidObjectId(repoId, 'repoId')
 
   let deleted;
 

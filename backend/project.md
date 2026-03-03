@@ -94,8 +94,10 @@ Temporal graph is required.
 
 ### MongoDB (Ingestion Service)
 
-- Entity hashes (`signatureHash`, `bodyHash`, `callListHash`) for diff computation
+- Entity hashes (`signatureHash`, `bodyHash`, `callListHash`) and call lists per entity for diff computation
 - No raw ASTs persisted
+
+> **Parser quality note (known issues):** Walkers currently emit all call targets including builtins (`toString`, `map`, `filter`, `push`, `forEach`, etc.), and `await axios.get` is stored verbatim as a callee name. `File` nodes and `DECLARES` edges are not yet emitted. These will be improved in the next walker pass.
 
 ### MongoDB (Doc Service — doc blocks)
 
@@ -119,19 +121,22 @@ Only embed meaningful entities.
 
 ```
 User adds repo
-→ Workspace Service registers repo
-→ Emit REPO_ADDED
+→ Workspace Service registers repo (reads installationId from Workspace, parses owner from gitUrl)
+→ Emit REPO_ADDED { workspaceId, repoId, installationId, owner, repo, defaultBranch }
 → Ingestion Service (FULL MODE):
-    - Fetch repo tree via GitHub API
-    - Fetch files (authenticated)
+    - fetchLatestCommitSha() → resolve HEAD commit from GitHub API
+    - Fetch repo file tree at HEAD commit
     - For each supported file:
-        - Parse AST (in memory)
-        - Extract: Functions, Classes, Imports, Calls, Endpoints
-        - Compute: signatureHash, bodyHash, callListHash
+        - Fetch file content (authenticated via @octokit/auth-app)
+        - Parse AST in memory (web-tree-sitter@0.20.8 + WASM grammars)
+        - Extract: Functions, Classes, Endpoints, Call sites
+        - Compute: signatureHash, bodyHash, callListHash per entity
+        - computeDiff (empty old state → everything is ENTITY_CREATED)
         - Emit: ENTITY_CREATED, RELATION_ADDED, EMBEDDING_REQUIRED, DOC_REQUIRED
-→ Graph Service: Create nodes + edges, set validFrom = initialCommit
-→ Vector Service: Generate embeddings, upsert vectors
-→ Doc Service: Generate doc blocks, store in MongoDB
+        - Upsert entity hashes + call lists to MongoDB (axiom_ingestion)
+→ Graph Service: MERGE nodes by entityId, create CALLS / CALLS_EXTERNAL edges, validFrom = HEAD commit
+→ Vector Service: Generate embeddings for EMBEDDING_REQUIRED events, upsert to ChromaDB
+→ Doc Service: Generate doc blocks for DOC_REQUIRED events, store in MongoDB
 ```
 
 ### Commit Flow (Diff Mode)

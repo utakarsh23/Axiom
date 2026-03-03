@@ -2,6 +2,7 @@ import express from 'express';
 import { config } from './config';
 import logger from './logger';
 import { connectDB, disconnectDB } from './db/client';
+import { connectNats, disconnectNats } from './events/index';
 import { router } from './api/router';
 
 const app = express();
@@ -15,11 +16,13 @@ app.get('/health', (_req, res) => {
 
 app.use(router);
 
-// Boot sequence — DB must be connected before accepting any workspace/repo requests
+// Boot sequence — DB and NATS must be connected before accepting any requests
 const start = async () => {
   try {
     await connectDB();
     logger.info('MongoDB connected');
+
+    await connectNats();
 
     app.listen(config.port, () => {
       logger.info({ port: config.port }, 'Workspace service listening');
@@ -30,13 +33,14 @@ const start = async () => {
   }
 };
 
-// Graceful shutdown — close Mongoose connection before exit
+// Graceful shutdown — drain NATS and close Mongoose connection before exit
 const shutdown = async (signal: string) => {
   logger.info({ signal }, 'Shutdown signal received');
 
   try {
+    await disconnectNats();
     await disconnectDB();
-    logger.info('MongoDB disconnected');
+    logger.info('Connections closed');
   } catch (err) {
     logger.error({ err }, 'Error during shutdown');
   }

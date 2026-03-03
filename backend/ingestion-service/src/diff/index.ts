@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { ExtractedEntity, ExtractedCall } from '../extractor/types';
 import { EntityHashes } from '../hasher/index';
 
@@ -7,7 +8,8 @@ export type DiffEventType =
   | 'ENTITY_DELETED'
   | 'RELATION_ADDED'
   | 'RELATION_REMOVED'
-  | 'EMBEDDING_REQUIRED';
+  | 'EMBEDDING_REQUIRED'
+  | 'DOC_REQUIRED';
 
 export interface DiffEvent {
   type: DiffEventType;
@@ -18,9 +20,18 @@ export interface DiffResult {
   events: DiffEvent[];
 }
 
-// oldCallLists: map of entityName → stored callList array from MongoDB
-// This enables precise RELATION_ADDED / RELATION_REMOVED diffing
-// instead of re-emitting all current calls on every callListHash change
+// Generates a stable, deterministic entity ID from its structural identity.
+// This ID is used across Graph, Vector, and Doc services to reference the same entity.
+// Changing workspaceId, repoId, filePath, or name produces a different ID — correct.
+function makeEntityId(workspaceId: string, repoId: string, filePath: string, entityName: string): string {
+  return createHash('sha256')
+    .update(`${workspaceId}:${repoId}:${filePath}:${entityName}`)
+    .digest('hex')
+    .slice(0, 24); // shorten for readability while maintaining uniqueness
+}
+
+// callLists per entity — built from the full calls array for the file
+// oldCallLists: stored callList from MongoDB for precise RELATION_ADDED / RELATION_REMOVED diffing
 function computeDiff(
   filePath: string,
   repoId: string,
@@ -52,20 +63,37 @@ function computeDiff(
   for (const [name, newHash] of newHashes) {
     const oldHash = oldHashes.get(name);
     const entity = newEntityMap.get(name)!;
+    const entityId = makeEntityId(workspaceId, repoId, filePath, name);
+    const callList = newCallLists.get(name) ?? [];
 
     if (!oldHash) {
       // New entity — did not exist in previous commit
       events.push({
         type: 'ENTITY_CREATED',
-        payload: { name, filePath, repoId, workspaceId, commitHash, kind: entity.kind, language: entity.language },
+        payload: {
+          entityId, entityName: name, kind: entity.kind, language: entity.language,
+          filePath, repoId, workspaceId, commitHash,
+        },
       });
       events.push({
         type: 'EMBEDDING_REQUIRED',
-        payload: { name, filePath, repoId, workspaceId, rawBody: entity.rawBody },
+        payload: {
+          entityId, entityName: name, kind: entity.kind, language: entity.language,
+          filePath, repoId, workspaceId, code: entity.rawBody,
+        },
+      });
+      events.push({
+        type: 'DOC_REQUIRED',
+        payload: {
+          entityId, entityName: name, kind: entity.kind, language: entity.language,
+          filePath, repoId, workspaceId, commitHash,
+          code: entity.rawBody,
+          callList,
+        },
       });
 
       // All calls from this entity are new relations
-      for (const callee of newCallLists.get(name) ?? []) {
+      for (const callee of callList) {
         events.push({
           type: 'RELATION_ADDED',
           payload: { callerName: name, calleeName: callee, filePath, repoId, workspaceId, commitHash },
@@ -81,11 +109,28 @@ function computeDiff(
     if (signatureChanged || bodyChanged) {
       events.push({
         type: 'ENTITY_UPDATED',
-        payload: { name, filePath, repoId, workspaceId, commitHash, kind: entity.kind },
+        payload: {
+          entityId, entityName: name, kind: entity.kind, language: entity.language,
+          filePath, repoId, workspaceId, commitHash,
+          code: entity.rawBody,
+          callList,
+        },
       });
       events.push({
         type: 'EMBEDDING_REQUIRED',
-        payload: { name, filePath, repoId, workspaceId, rawBody: entity.rawBody },
+        payload: {
+          entityId, entityName: name, kind: entity.kind, language: entity.language,
+          filePath, repoId, workspaceId, code: entity.rawBody,
+        },
+      });
+      events.push({
+        type: 'DOC_REQUIRED',
+        payload: {
+          entityId, entityName: name, kind: entity.kind, language: entity.language,
+          filePath, repoId, workspaceId, commitHash,
+          code: entity.rawBody,
+          callList,
+        },
       });
     }
 
@@ -118,9 +163,11 @@ function computeDiff(
   // 2. Find deleted entities
   for (const [name] of oldHashes) {
     if (!newHashes.has(name)) {
+      const entityId = makeEntityId(workspaceId, repoId, filePath, name);
+
       events.push({
         type: 'ENTITY_DELETED',
-        payload: { name, filePath, repoId, workspaceId, commitHash },
+        payload: { entityId, entityName: name, filePath, repoId, workspaceId, commitHash },
       });
 
       // All relations from this entity are removed
@@ -136,4 +183,4 @@ function computeDiff(
   return { events };
 }
 
-export { computeDiff };
+export { computeDiff, makeEntityId };
