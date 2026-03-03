@@ -1,0 +1,124 @@
+version: "3.9"
+
+# Infrastructure (MongoDB, Neo4j Desktop, ChromaDB, NATS) runs locally.
+# Services connect to host machine via host.docker.internal.
+# On Linux: add `extra_hosts: ["host.docker.internal:host-gateway"]` to each service.
+# On Docker Desktop for Mac/Windows: host.docker.internal resolves automatically.
+
+networks:
+  axiom:
+    driver: bridge
+
+services:
+
+  # ── Reverse proxy ────────────────────────────────────────────────────────────
+
+  nginx:
+    image: nginx:alpine
+    container_name: axiom-nginx
+    restart: unless-stopped
+    networks: [axiom]
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - workspace-service
+      - ingestion-service
+      - graph-service
+      - vector-service
+      - documentation-service
+      - search-service
+      - ci-vuln-service
+
+  # ── Services ─────────────────────────────────────────────────────────────────
+
+  auth-service:
+    build: ./backend/auth-service
+    container_name: axiom-auth
+    restart: unless-stopped
+    networks: [axiom]
+    env_file: ./backend/auth-service/.env
+    environment:
+      MONGO_URI: mongodb://host.docker.internal:27017/auth-service
+
+  workspace-service:
+    build: ./backend/workspace-service
+    container_name: axiom-workspace
+    restart: unless-stopped
+    networks: [axiom]
+    env_file: ./backend/workspace-service/.env
+    environment:
+      MONGO_URI: mongodb://host.docker.internal:27017/workspace-service
+      NATS_URL: nats://host.docker.internal:4222
+
+  ingestion-service:
+    build: ./backend/ingestion-service
+    container_name: axiom-ingestion
+    restart: unless-stopped
+    networks: [axiom]
+    env_file: ./backend/ingestion-service/.env
+    environment:
+      MONGODB_URI: mongodb://host.docker.internal:27017
+      NATS_URL: nats://host.docker.internal:4222
+
+  graph-service:
+    build: ./backend/graph-service
+    container_name: axiom-graph
+    restart: unless-stopped
+    networks: [axiom]
+    env_file: ./backend/graph-service/.env
+    environment:
+      NEO4J_URI: bolt://host.docker.internal:7687
+      NATS_URL: nats://host.docker.internal:4222
+
+  vector-service:
+    build: ./backend/vector-service
+    container_name: axiom-vector
+    restart: unless-stopped
+    networks: [axiom]
+    env_file: ./backend/vector-service/.env
+    environment:
+      CHROMA_URL: http://host.docker.internal:8000
+      NATS_URL: nats://host.docker.internal:4222
+      LLM_SERVICE_URL: http://llm-service:9004
+
+  documentation-service:
+    build: ./backend/documentation-service
+    container_name: axiom-docs
+    restart: unless-stopped
+    networks: [axiom]
+    env_file: ./backend/documentation-service/.env
+    environment:
+      MONGO_URI: mongodb://host.docker.internal:27017/documentation-service
+      NATS_URL: nats://host.docker.internal:4222
+      LLM_SERVICE_URL: http://llm-service:9004
+      GRAPH_SERVICE_URL: http://graph-service:9002
+    depends_on: [graph-service]
+
+  search-service:
+    build: ./backend/search-service
+    container_name: axiom-search
+    restart: unless-stopped
+    networks: [axiom]
+    env_file: ./backend/search-service/.env
+    environment:
+      VECTOR_SERVICE_URL: http://vector-service:9003
+      GRAPH_SERVICE_URL: http://graph-service:9002
+      DOC_SERVICE_URL: http://documentation-service:9005
+    depends_on: [vector-service, graph-service, documentation-service]
+
+  ci-vuln-service:
+    build: ./backend/ci-vuln-service
+    container_name: axiom-ci
+    restart: unless-stopped
+    networks: [axiom]
+    env_file: ./backend/ci-vuln-service/.env
+    environment:
+      NATS_URL: nats://host.docker.internal:4222
+      GRAPH_SERVICE_URL: http://graph-service:9002
+      WORKSPACE_SERVICE_URL: http://workspace-service:9000
+      LLM_SERVICE_URL: http://llm-service:9004
+      INGESTION_SERVICE_URL: http://ingestion-service:9001
+    depends_on: [graph-service, workspace-service]
