@@ -90,6 +90,7 @@ Temporal graph is required.
 - Repository tracking
 - Ingestion job state
 - Optional AST metadata (hashes only, not raw AST)
+- **Rulebook** — per-workspace coding standards (`naming`, `comments`, `structure`, `architecture`). Optional field on workspace document. CI Service fetches this before running checks.
 
 ### MongoDB (Ingestion Service)
 
@@ -162,31 +163,33 @@ GitHub → COMMIT_RECEIVED
 → Vector Service: embeddings updated
 ```
 
-**Step 2 — CI / Vulnerability Scan (runs after graph update):**
+**Step 2 — CI / Vulnerability Scan (runs after graph update) — Three-Tier Escalation:**
 
-Structural checks (graph-based):
+Tier 1 — Structural checks (Graph Service Cypher queries):
 - Circular dependency introduced?
-- Service accessing forbidden layer?
+- Service accessing forbidden layer (rulebook `architecture` rules or default policy)?
 - Deprecated API used?
 - Endpoint removed but still referenced?
 - Cross-repo violation?
 
-Code pattern checks:
-- Hardcoded secrets? Missing error handling? Unsafe async?
-- SQL injection risk? Dangerous eval? Dependency vulnerability?
+Tier 2 — Code pattern + rulebook checks (parallel, on changed entity payloads):
+- Semgrep: hardcoded secrets, SQL injection, unsafe async, dangerous eval
+- Dep audit: `npm audit` / `pip audit` / `cargo audit` for known vulnerabilities
+- Rulebook: naming conventions, JSDoc presence, forbidden patterns, line limits, layer access rules
 
-If no violation → stop. If violation found → proceed.
+If no findings from Tier 1 and Tier 2 → stop. Clean commit. LLM never called.
+If any finding → assemble structured findings and proceed to Step 3.
 
 **Step 3 — Context Assembly:**
 
-CI Service assembles bounded context and sends to LLM Service:
-- Target function code
+CI Service assembles structured input for LLM Service:
+- All Tier 1 + Tier 2 findings (source, type, flagged line / graph path / entity)
+- Target entity code
 - Direct callers and callees
 - Impacted endpoints
-- Relevant schema (if any)
 - Similar safe implementations from Vector Service (optional)
 
-Never the entire graph.
+Never the entire graph. LLM receives exact findings, not raw code to scan.
 
 **Step 4 — Patch Proposal:**
 

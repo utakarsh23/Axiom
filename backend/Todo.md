@@ -19,19 +19,6 @@ Impact traversal must follow both edge types for full cross-service blast radius
 
 ---
 
-### v2 — Language Walkers (`src/extractor/`)
-
-Walkers not yet implemented — currently return empty results:
-
-- [ ] `pyWalker.ts` — Python
-- [ ] `javaWalker.ts` — Java
-- [ ] `cWalker.ts` — C / C++
-- [ ] `goWalker.ts` — Go
-- [ ] `rustWalker.ts` — Rust
-- [ ] `solWalker.ts` — Solidity
-
----
-
 ## All Services — Refactor Routers to Controllers
 
 Currently all services use a flat `src/api/router.ts` that calls service handlers directly.

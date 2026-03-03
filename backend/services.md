@@ -63,24 +63,54 @@ Detailed breakdown of every service in the platform — what it owns, what it do
 
 ## 2. Workspace Service
 
-**Role:** Manages tenancy. Knows which workspaces exist, which repos belong to them, and who has access.
+**Role:** Manages tenancy. Knows which workspaces exist, which repos belong to them, who has access, and what coding standards the workspace enforces.
 
 ### Owns
 - Workspace metadata (stored in MongoDB)
 - Repository registration state
 - User-to-workspace mappings
 - GitHub installation IDs
+- **Workspace Rulebook** — per-workspace coding standards and architecture constraints (stored in MongoDB, `rulebook` field on workspace document)
+
+### Rulebook Schema
+```json
+{
+  "naming": {
+    "functions": "camelCase",
+    "classes": "PascalCase",
+    "files": "kebab-case",
+    "constants": "UPPER_SNAKE_CASE"
+  },
+  "comments": {
+    "requireJsDoc": true,
+    "minCommentRatio": 0.1
+  },
+  "structure": {
+    "maxFunctionLines": 50,
+    "maxFileLines": 300,
+    "forbiddenPatterns": ["console.log", "debugger", "TODO:"]
+  },
+  "architecture": {
+    "forbiddenLayerAccess": [
+      { "from": "controller", "to": "repository", "reason": "must go through service layer" }
+    ]
+  }
+}
+```
+Rulebook is optional — if not defined, only default policy rules and Semgrep checks apply.
 
 ### Does
 - Create, update, and delete workspaces
 - Attach and detach repositories to a workspace
 - Store GitHub App installation IDs for authenticated API access
+- Create, update, and return the workspace rulebook (`GET/PUT /workspaces/:workspaceId/rulebook`)
 - Emit `REPO_ADDED` to the message bus when a new repo is registered — this kicks off the cold start ingestion flow
 
 ### Does NOT
 - Parse any code
 - Read or write to the knowledge graph
 - Generate embeddings
+- Enforce the rulebook itself (CI Service does that)
 
 > Workspace Service is the starting point of every ingestion flow, but it does none of the heavy lifting itself.
 
@@ -342,43 +372,80 @@ Triggered on `COMMIT_RECEIVED`.
 
 ## 9. CI / Vulnerability Service
 
-**Role:** The enforcement layer. Runs structural and code pattern checks after every graph update, assembles violation context, triggers the full autonomous patch flow.
+**Role:** The enforcement layer. Runs a three-tier escalating check pipeline after every commit's graph update settles. Only escalates to LLM when lower tiers find something — keeping LLM cost bounded and accuracy high.
 
 ### Owns
-- Policy rule definitions
-- Architecture constraint rules
-- Vulnerability scanner integrations
-- Scheduled analysis jobs
+- Default policy rule definitions
+- Semgrep rule set + dependency audit integration
+- Rulebook enforcement logic (fetches rulebook from Workspace Service per workspace)
 - PR creation logic (branches, commits, GitHub API)
 
-### Does
+### Check Pipeline — Three-Tier Escalation
 
-#### Structural Checks (graph-based)
+Runs after every commit's graph update settles.
+
+**Tier 1 — Structural checks (Graph Service queries)**
 - Circular dependency introduced?
-- Service accessing forbidden layer?
+- Service accessing forbidden layer (from workspace rulebook `architecture.forbiddenLayerAccess` or default policy)?
 - Deprecated API used?
 - Endpoint removed but still referenced?
 - Cross-repo violation?
 
-#### Code Pattern Checks
-- Hardcoded secrets? Missing error handling? Unsafe async?
-- SQL injection risk? Dangerous eval? Dependency vulnerability?
+All Tier 1 checks are exact Cypher traversals via Graph Service API — zero false positives.
 
-#### Autonomous Patch Flow (when violation found)
-1. Assembles bounded context: target code, callers, callees, endpoints, similar safe patterns
-2. Sends context to LLM Service (`POST /llm/patch`) — receives unified diff + risk level + confidence
-3. Runs simulation gate: apply patch in memory → AST reparse → projected entity/relation delta → Graph Service impact simulation
-4. If unsafe → discard
-5. If safe → create branch, apply patch, commit, push, open PR with full violation + fix description
-6. Merge decision by risk level: LOW = auto-merge, MEDIUM = require review, HIGH = block + manual
-7. After merge: standard COMMIT_RECEIVED flow runs — graph and vectors update normally
+**Tier 2 — Code pattern + rulebook checks (run in parallel, on changed entity payloads)**
+
+Tier 2a — Semgrep + dependency audit:
+- Hardcoded secrets
+- SQL injection risk
+- Unsafe async patterns
+- Dangerous `eval` usage
+- Dependency vulnerabilities (`npm audit` / `pip audit` / `cargo audit`)
+
+Tier 2b — Workspace Rulebook:
+- Naming conventions — regex on entity names already in the graph
+- JSDoc / comment presence — check entity code from event payload
+- Forbidden patterns (`console.log`, `debugger`, etc.) — scan code string
+- Max function / file line limits — check entity code length
+- Architecture layer rules — graph query (same mechanism as Tier 1)
+
+If rulebook is not defined for the workspace, Tier 2b is skipped.
+
+**Tier 3 — LLM escalation (only if Tier 1 OR Tier 2 finds anything)**
+
+CI Service assembles structured input and sends to LLM Service:
+```json
+{
+  "findings": [
+    { "source": "graph", "type": "circular_dependency", "path": ["A → B → C → A"] },
+    { "source": "semgrep", "ruleId": "javascript.sql-injection", "line": 42, "code": "..." },
+    { "source": "rulebook", "type": "naming_violation", "entity": "getUserdata", "expected": "camelCase" }
+  ],
+  "entityCode": "...",
+  "callers": [],
+  "callees": [],
+  "similarSafePatterns": []
+}
+```
+
+LLM (`POST /llm/patch`) returns: confirmed violations, severity, unified diff patch, risk score.
+
+If no findings from Tier 1 and Tier 2 → stop. Clean commit. LLM is never called.
+
+### Autonomous Patch Flow (after Tier 3 confirms violation)
+1. Patch Simulation: apply patch in memory → AST reparse → projected entity/relation delta → Graph Service structural impact check
+2. If unsafe → discard
+3. If safe → create branch, apply patch, commit, push, open PR with full violation + fix description
+4. Merge decision by risk level: `LOW` = auto-merge, `MEDIUM` = require review, `HIGH` = block + manual
+5. After merge: standard `COMMIT_RECEIVED` flow — graph and vectors update normally
 
 ### Does NOT
 - Parse AST directly (delegates reparsing to Ingestion Service parser)
 - Write to the graph (graph only changes via ingestion events)
 - Generate embeddings
+- Call LLM on every commit — only when Tier 1 or Tier 2 produces findings
 
-> CI Service triggers and coordinates — it never mutates the graph directly. Every fix flows through the standard commit path.
+> CI Service coordinates enforcement — it never mutates the graph directly. Every fix flows through the standard commit path. LLM is a confirmation and reasoning layer, not a first-pass scanner.
 
 ---
 
@@ -415,14 +482,14 @@ Triggered on `COMMIT_RECEIVED`.
 
 | Service | Owns |
 |---------|------|
-| Workspace Service | MongoDB (`workspaces`, `repositories`) |
+| Workspace Service | MongoDB (`workspaces`, `repositories`, `rulebook` per workspace) |
 | Ingestion Service | MongoDB (`entityHashes`) |
 | Graph Service | Neo4j |
 | Vector Service | ChromaDB |
 | LLM Service | None (stateless — owns provider clients only) |
 | Doc Service | MongoDB (`docBlocks`) |
 | Search Service | None (pure orchestration) |
-| CI / Vulnerability Service | None (rule engine + event triggers) |
+| CI / Vulnerability Service | None (rule engine + event triggers — fetches rulebook from Workspace Service) |
 
 ---
 
@@ -454,11 +521,14 @@ GitHub Webhook
 ```
 [After every commit graph update]
 CI / Vulnerability Service:
-  → Structural checks (Graph Service queries)
-  → Code pattern checks
-  → If violation:
-      → Assemble bounded context
-      → LLM Service (POST /llm/patch) → unified diff + risk level + confidence
+  → [Tier 1] Structural checks (Graph Service Cypher queries)
+  → [Tier 2a] Semgrep + dep audit on changed entity payloads
+  → [Tier 2b] Rulebook checks (fetch from Workspace Service, regex + graph queries)
+  → Any findings from Tier 1 OR Tier 2?
+      ↓ NO  → Stop. Clean commit.
+      ↓ YES
+  → [Tier 3] Assemble structured findings + bounded context
+      → LLM Service (POST /llm/patch) → confirmed violations + unified diff + risk level
       → Patch Simulation:
           - Apply in memory
           - Reparse file (AST)
