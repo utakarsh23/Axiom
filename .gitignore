@@ -1,0 +1,59 @@
+# ─── Dependencies ───────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ─── Build outputs ──────────────────────────────────────────────────────────
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# ─── TypeScript ─────────────────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ─── Environment variables ──────────────────────────────────────────────────
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+# Keep example files
+!.env.example
+
+# ─── Logs ───────────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pino.log
+
+# ─── OS files ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Editor / IDE ───────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ─── Test & coverage ────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
+
+# ─── Package manager locks (keep one) ───────────────────────────────────────
+yarn.lock
+pnpm-lock.yaml
+
+# ─── ChromaDB local data ─────────────────────────────────────────────────────
+chroma-data/
+
+# ─── Misc ───────────────────────────────────────────────────────────────────
+*.tgz
+.cache/
+tmp/
+temp/
