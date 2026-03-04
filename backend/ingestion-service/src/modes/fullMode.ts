@@ -48,10 +48,12 @@ export interface FullModeInput {
   repo: string;
   branch: string;          // default branch — used to resolve commitSha if not provided
   commitSha?: string;      // optional — if absent, resolved from GitHub HEAD of branch
+  gitUrl?: string;         // optional — constructed from owner+repo if not provided
 }
 
 async function runFullMode(input: FullModeInput): Promise<void> {
   const { workspaceId, repoId, installationId, owner, repo, branch } = input;
+  const gitUrl = input.gitUrl ?? `https://github.com/${owner}/${repo}`;
 
   const octokit = await getInstallationClient(installationId);
 
@@ -100,6 +102,7 @@ async function runFullMode(input: FullModeInput): Promise<void> {
         file.path, repoId, workspaceId, commitSha,
         entities, calls,
         newHashes, oldHashes, oldCallLists,
+        gitUrl, branch,
       );
 
       // Publish events to NATS

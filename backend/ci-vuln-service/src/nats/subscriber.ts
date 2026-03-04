@@ -6,21 +6,21 @@ import logger from '../logger';
 // Both ENTITY_CREATED and ENTITY_UPDATED carry this structure
 interface EntityEventPayload {
   workspaceId: string;
-  repoId:      string;
-  entityId:    string;
-  entityName:  string;
-  entityType:  string;   // 'Function' | 'Class' | 'Endpoint'
-  filePath:    string;
-  code:        string;   // raw source code of the entity
-  commitHash:  string;
-  language:    string;
-  gitUrl:      string;   // full GitHub clone URL — used by PR creation
-  baseBranch:  string;   // default branch of the repo — PR targets this branch
+  repoId: string;
+  entityId: string;
+  entityName: string;
+  entityType: string;   // 'Function' | 'Class' | 'Endpoint'
+  filePath: string;
+  code: string;   // raw source code of the entity
+  commitHash: string;
+  language: string;
+  gitUrl: string;   // full GitHub clone URL — used by PR creation
+  baseBranch: string;   // default branch of the repo — PR targets this branch
 }
 
 // Subscribes to ENTITY_CREATED — runs the full check pipeline on new entities
 const subscribeToEntityCreated = (): void => {
-  const nc  = getNatsConnection();
+  const nc = getNatsConnection();
   const sub = nc.subscribe('ENTITY_CREATED');
   subscriptions.push(sub);
 
@@ -43,7 +43,7 @@ const subscribeToEntityCreated = (): void => {
 
 // Subscribes to ENTITY_UPDATED — runs checks on changed entities
 const subscribeToEntityUpdated = (): void => {
-  const nc  = getNatsConnection();
+  const nc = getNatsConnection();
   const sub = nc.subscribe('ENTITY_UPDATED');
   subscriptions.push(sub);
 

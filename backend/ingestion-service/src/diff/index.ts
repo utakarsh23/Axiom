@@ -42,6 +42,8 @@ function computeDiff(
   newHashes: Map<string, EntityHashes>,
   oldHashes: Map<string, EntityHashes>,
   oldCallLists: Map<string, string[]>,
+  gitUrl: string = '',
+  baseBranch: string = '',
 ): DiffResult {
   const events: DiffEvent[] = [];
 
@@ -73,6 +75,8 @@ function computeDiff(
         payload: {
           entityId, entityName: name, kind: entity.kind, language: entity.language,
           filePath, repoId, workspaceId, commitHash,
+          code: entity.rawBody, callList,
+          gitUrl, baseBranch,
         },
       });
       events.push({
@@ -112,8 +116,8 @@ function computeDiff(
         payload: {
           entityId, entityName: name, kind: entity.kind, language: entity.language,
           filePath, repoId, workspaceId, commitHash,
-          code: entity.rawBody,
-          callList,
+          code: entity.rawBody, callList,
+          gitUrl, baseBranch,
         },
       });
       events.push({

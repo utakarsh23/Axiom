@@ -42,10 +42,14 @@ export interface DiffModeInput {
   owner: string;
   repo: string;
   commitSha: string;
+  gitUrl?: string;       // optional — constructed from owner+repo if not provided
+  baseBranch?: string;   // default branch — forwarded from REPO_ADDED registry
 }
 
 async function runDiffMode(input: DiffModeInput): Promise<void> {
   const { workspaceId, repoId, installationId, owner, repo, commitSha } = input;
+  const gitUrl = input.gitUrl ?? `https://github.com/${owner}/${repo}`;
+  const baseBranch = input.baseBranch ?? '';
 
   logger.info({ owner, repo, commitSha }, 'Processing commit');
 
@@ -106,6 +110,7 @@ async function runDiffMode(input: DiffModeInput): Promise<void> {
         file.filename, repoId, workspaceId, commitSha,
         entities, calls,
         newHashes, oldHashes, oldCallLists,
+        gitUrl, baseBranch,
       );
 
       publishEvents(events);

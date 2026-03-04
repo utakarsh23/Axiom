@@ -82,6 +82,8 @@ webhookRouter.post('/github', async (req: Request, res: Response) => {
       commitSha,
       workspaceId: registry.workspaceId,
       repoId: registry.repoId,
+      baseBranch: registry.defaultBranch,
+      gitUrl: `https://github.com/${owner}/${repo}`,
     });
 
     logger.info({ owner, repo, commitSha, workspaceId: registry.workspaceId, repoId: registry.repoId }, 'COMMIT_RECEIVED published');
