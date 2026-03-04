@@ -1,5 +1,7 @@
 import Parser from 'web-tree-sitter';
 import { ExtractedEntity, ExtractedImport, ExtractedCall, ExtractionResult } from './types';
+import { resolveCallee } from './callFilter';
+
 
 // TODO: v2 — Cross-service call detection (external contract calls etc.)
 // See backend/Todo.md for full list
@@ -80,15 +82,17 @@ function walkSolTree(root: Parser.SyntaxNode, filePath: string): ExtractionResul
       case 'call_expression': {
         const fnNode = node.childForFieldName('function');
         if (fnNode && currentFunctionName) {
-          const calleeName = fnNode.type === 'member_expression'
-            ? fnNode.childForFieldName('property')?.text ?? fnNode.text
-            : fnNode.text;
-
-          calls.push({
-            callerName: currentFunctionName,
-            calleeName,
-            filePath,
-          });
+          let calleeName: string | null;
+          if (fnNode.type === 'member_expression') {
+            const objectName = fnNode.childForFieldName('object')?.text ?? null;
+            const propertyName = fnNode.childForFieldName('property')?.text ?? null;
+            calleeName = resolveCallee(fnNode.text, objectName, propertyName);
+          } else {
+            calleeName = resolveCallee(fnNode.text, null, null);
+          }
+          if (calleeName) {
+            calls.push({ callerName: currentFunctionName, calleeName, filePath });
+          }
         }
         break;
       }

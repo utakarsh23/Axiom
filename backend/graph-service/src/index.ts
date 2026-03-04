@@ -4,6 +4,7 @@ import { connectDB, disconnectDB } from './db/client';
 import { startSubscribers, stopSubscribers } from './events/subscriber';
 import { graphRouter } from './api/router';
 import { logger } from './logger';
+import cors from 'cors';
 
 async function start(): Promise<void> {
   // Boot order:
@@ -15,6 +16,13 @@ async function start(): Promise<void> {
   const app = express();
 
   app.use(express.json());
+  app.use(cors(
+    {
+      origin: '*',
+      methods: ['GET', 'POST', 'PUT', 'DELETE'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    }
+  ));
 
   // All graph query routes mounted under /graph
   app.use('/graph', graphRouter);
@@ -38,7 +46,7 @@ async function start(): Promise<void> {
   }
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT',  () => shutdown('SIGINT'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 start().catch((err) => {

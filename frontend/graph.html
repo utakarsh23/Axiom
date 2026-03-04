@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Axiom — Graph Explorer</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #0d0f14;
+            --surface: #151820;
+            --surface2: #1e2230;
+            --border: #2a2f3e;
+            --accent: #6c8ef7;
+            --accent2: #a78bfa;
+            --green: #34d399;
+            --pink: #f472b6;
+            --yellow: #fbbf24;
+            --text: #e2e8f0;
+            --muted: #64748b;
+            --radius: 12px;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── TOP BAR ─────────────────────────────────────────── */
+        header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 20px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            z-index: 10;
+        }
+
+        header h1 {
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            flex-shrink: 0;
+        }
+
+        .config {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex: 1;
+        }
+
+        .config input,
+        .config select {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            padding: 6px 10px;
+            outline: none;
+            transition: border-color .15s;
+        }
+
+        .config input {
+            flex: 1;
+            min-width: 160px;
+        }
+
+        .config input:focus,
+        .config select:focus {
+            border-color: var(--accent);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 7px 16px;
+            transition: opacity .15s, transform .1s;
+            white-space: nowrap;
+        }
+
+        .btn:hover {
+            opacity: .9;
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-ghost {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .btn-ghost:hover {
+            color: var(--text);
+            border-color: var(--accent);
+        }
+
+        /* ── LEGEND ──────────────────────────────────────────── */
+        .legend {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: default;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        /* ── STATUS BAR ──────────────────────────────────────── */
+        .status-bar {
+            font-size: 11px;
+            color: var(--muted);
+            padding: 5px 20px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            user-select: none;
+        }
+
+        .status-bar span {
+            color: var(--accent);
+            font-weight: 500;
+        }
+
+        /* ── CANVAS AREA ─────────────────────────────────────── */
+        #canvas-wrap {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        #canvas-wrap:active {
+            cursor: grabbing;
+        }
+
+        svg#graph {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            inset: 0;
+        }
+
+        /* ── NODE + EDGE STYLES (via SVG classes) ───────────── */
+        .file-node circle {
+            fill: var(--surface2);
+            stroke-width: 2;
+            transition: fill .2s, stroke .2s, r .25s;
+            cursor: pointer;
+            filter: drop-shadow(0 4px 12px rgba(108, 142, 247, .15));
+        }
+
+        .file-node.selected circle {
+            fill: #1e2a4a;
+        }
+
+        .file-node:hover circle {
+            fill: #252c3f;
+        }
+
+        .file-node text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            fill: var(--text);
+            pointer-events: none;
+            text-anchor: middle;
+        }
+
+        .fn-node circle {
+            fill: #1a1d28;
+            stroke-width: 1.5;
+            cursor: pointer;
+            transition: fill .2s;
+        }
+
+        .fn-node:hover circle {
+            fill: var(--surface2);
+        }
+
+        .fn-node text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            fill: var(--muted);
+            pointer-events: none;
+            text-anchor: middle;
+        }
+
+        .fn-node.highlighted text {
+            fill: var(--text);
+        }
+
+        .edge {
+            stroke: var(--border);
+            stroke-width: 1;
+            fill: none;
+            opacity: 0.4;
+            pointer-events: none;
+            transition: stroke .2s, opacity .2s, stroke-width .2s;
+        }
+
+        .edge.cross-file {
+            stroke: var(--yellow);
+            stroke-width: 2;
+            opacity: 0.9;
+            stroke-dasharray: 6 3;
+        }
+
+        .edge.external {
+            stroke: var(--pink);
+            stroke-width: 1;
+            opacity: 0.5;
+            stroke-dasharray: 3 4;
+        }
+
+        .edge.dimmed {
+            opacity: 0.05;
+        }
+
+        /* ── TOOLTIP ─────────────────────────────────────────── */
+        #tooltip {
+            position: fixed;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 10px 14px;
+            font-size: 11px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity .15s;
+            max-width: 300px;
+            word-break: break-all;
+            z-index: 100;
+            line-height: 1.6;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, .5);
+        }
+
+        #tooltip.visible {
+            opacity: 1;
+        }
+
+        #tooltip .tt-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        #tooltip .tt-path {
+            color: var(--muted);
+            font-size: 10px;
+            margin-top: 2px;
+        }
+
+        #tooltip .tt-kind {
+            color: var(--green);
+            font-size: 10px;
+        }
+
+        /* ── SIDE PANEL ──────────────────────────────────────── */
+        #panel {
+            position: fixed;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 280px;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            padding: 16px;
+            transform: translateX(100%);
+            transition: transform .25s cubic-bezier(.4, 0, .2, 1);
+            z-index: 50;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        #panel.open {
+            transform: translateX(0);
+        }
+
+        #panel h2 {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        #panel .close-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: none;
+            border: none;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        #panel .close-btn:hover {
+            color: var(--text);
+        }
+
+        .panel-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .panel-section label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: var(--muted);
+        }
+
+        .panel-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .panel-list li {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            padding: 5px 8px;
+            border-radius: 6px;
+            background: var(--surface2);
+            color: var(--text);
+            border-left: 2px solid var(--accent);
+            word-break: break-all;
+        }
+
+        .panel-list li.ext {
+            border-left-color: var(--pink);
+            color: var(--pink);
+        }
+
+        .hint {
+            font-size: 10px;
+            color: var(--muted);
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 10px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1>⬡ Axiom Graph</h1>
+        <div class="config">
+            <input id="wsInput" placeholder="workspaceId" value="69a824c9daf8123be640cdfb" />
+            <input id="repoInput" placeholder="repoId" value="69a82688daf8123be640ce06" />
+            <select id="apiBase">
+                <option value="http://localhost:9002">localhost:9002</option>
+                <option value="https://lavelle-unconceited-unarchly.ngrok-free.dev">ngrok</option>
+            </select>
+            <button class="btn" id="loadBtn">Load Graph</button>
+            <button class="btn btn-ghost" id="resetBtn">Reset</button>
+        </div>
+        <div class="legend">
+            <div class="legend-item">
+                <div class="dot" style="background:#6c8ef7;"></div> File
+            </div>
+            <div class="legend-item">
+                <div class="dot" style="background:#34d399;"></div> Function
+            </div>
+            <div class="legend-item">
+                <div class="dot" style="background:#a78bfa;"></div> Endpoint
+            </div>
+            <div class="legend-item">
+                <div class="dot" style="background:#fbbf24;border-radius:2px;"></div> Cross-file calls
+            </div>
+            <div class="legend-item">
+                <div class="dot" style="background:#f472b6;border-radius:2px;"></div> External
+            </div>
+        </div>
+    </header>
+
+    <div class="status-bar" id="statusBar">
+        Ready — enter workspaceId &amp; repoId then click Load Graph
+    </div>
+
+    <div id="canvas-wrap">
+        <svg id="graph">
+            <defs>
+                <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                    <path d="M0,0 L0,6 L8,3 z" fill="var(--border)" />
+                </marker>
+                <marker id="arrow-cross" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                    <path d="M0,0 L0,6 L8,3 z" fill="var(--yellow)" />
+                </marker>
+                <marker id="arrow-ext" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                    <path d="M0,0 L0,6 L8,3 z" fill="var(--pink)" />
+                </marker>
+            </defs>
+            <g id="edges-layer"></g>
+            <g id="nodes-layer"></g>
+        </svg>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <div id="panel">
+        <button class="close-btn" id="panelClose">×</button>
+        <h2 id="panelTitle">File detail</h2>
+        <div class="panel-section" id="panelFunctions">
+            <label>Functions</label>
+            <ul class="panel-list" id="fnList"></ul>
+        </div>
+        <div class="panel-section" id="panelCross" style="display:none;">
+            <label>Cross-file calls</label>
+            <ul class="panel-list" id="crossList"></ul>
+        </div>
+        <div class="panel-section" id="panelExt" style="display:none;">
+            <label>External calls</label>
+            <ul class="panel-list" id="extList"></ul>
+        </div>
+    </div>
+
+    <script>
+        // ─── STATE ───────────────────────────────────────────────────────────────────
+        let rawNodes = [], rawEdges = [];
+        let fileMap = new Map(); // filePath → { funcs, endpoints }
+        let extNodes = [];
+        let fileOrder = [];
+
+        // Graph state
+        let expandedFiles = new Set();    // file paths currently expanded
+        let selectedFiles = new Set();    // up to 2 selected for cross-file
+        let nodePos = new Map();    // id → { x, y }
+        let drag = null;
+
+        // SVG pan/zoom
+        let vx = 0, vy = 0, vscale = 1;
+        let isPanning = false, panStart = null;
+
+        // ─── DOM ─────────────────────────────────────────────────────────────────────
+        const svg = document.getElementById('graph');
+        const edgesLayer = document.getElementById('edges-layer');
+        const nodesLayer = document.getElementById('nodes-layer');
+        const tooltip = document.getElementById('tooltip');
+        const panel = document.getElementById('panel');
+        const statusBar = document.getElementById('statusBar');
+
+        // ─── UTIL ─────────────────────────────────────────────────────────────────────
+        function shortPath(p) {
+            const parts = p.split('/');
+            return parts.length > 2 ? '…/' + parts.slice(-2).join('/') : p;
+        }
+        function baseName(p) {
+            return p.split('/').pop();
+        }
+        function sv(tag, attrs = {}, text = '') {
+            const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+            for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+            if (text) el.textContent = text;
+            return el;
+        }
+        function setStatus(msg, highlight = '') {
+            statusBar.innerHTML = highlight
+                ? msg.replace(highlight, `<span>${highlight}</span>`)
+                : msg;
+        }
+
+        // ─── DATA PROCESSING ─────────────────────────────────────────────────────────
+        function processData(data) {
+            fileMap.clear(); extNodes = [];
+
+            for (const n of data.nodes) {
+                if (n.kind === 'external' || !n.filePath) {
+                    extNodes.push(n);
+                    continue;
+                }
+                if (!fileMap.has(n.filePath)) fileMap.set(n.filePath, { funcs: [], endpoints: [] });
+                const bucket = fileMap.get(n.filePath);
+                if (n.kind === 'endpoint') bucket.endpoints.push(n);
+                else bucket.funcs.push(n);
+            }
+
+            rawEdges = data.edges;
+            fileOrder = [...fileMap.keys()].sort();
+        }
+
+        // ─── LAYOUT ──────────────────────────────────────────────────────────────────
+        const FILE_R = 54;
+        const FN_R = 20;
+        const FN_ORBIT = 110;
+
+        function layoutFiles() {
+            const W = svg.clientWidth || 1200;
+            const H = svg.clientHeight || 700;
+            const n = fileOrder.length;
+
+            // Circular layout for files
+            const rx = Math.min(W, H) * 0.35;
+            const ry = Math.min(W, H) * 0.28;
+            const cx = W / 2, cy = H / 2;
+
+            fileOrder.forEach((fp, i) => {
+                const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+                nodePos.set('file:' + fp, {
+                    x: cx + rx * Math.cos(angle),
+                    y: cy + ry * Math.sin(angle),
+                });
+            });
+        }
+
+        function layoutFunctions(filePath) {
+            const filePos = nodePos.get('file:' + filePath);
+            const { funcs, endpoints } = fileMap.get(filePath);
+            const all = [...funcs, ...endpoints];
+            all.forEach((fn, i) => {
+                const angle = (2 * Math.PI * i / all.length) - Math.PI / 2;
+                nodePos.set('fn:' + fn.name + ':' + filePath, {
+                    x: filePos.x + FN_ORBIT * Math.cos(angle),
+                    y: filePos.y + FN_ORBIT * Math.sin(angle),
+                });
+            });
+        }
+
+        // ─── RENDER ──────────────────────────────────────────────────────────────────
+        function render() {
+            nodesLayer.innerHTML = '';
+            edgesLayer.innerHTML = '';
+
+            // Render file nodes
+            for (const fp of fileOrder) {
+                const pos = nodePos.get('file:' + fp);
+                renderFileNode(fp, pos);
+                if (expandedFiles.has(fp)) {
+                    renderFunctionNodes(fp);
+                }
+            }
+
+            // Render edges
+            renderEdges();
+        }
+
+        function renderFileNode(fp, pos) {
+            const g = sv('g', { class: 'file-node' + (selectedFiles.has(fp) ? ' selected' : ''), transform: `translate(${pos.x},${pos.y})` });
+            g.dataset.fp = fp;
+
+            const c = sv('circle', {
+                r: FILE_R,
+                stroke: selectedFiles.has(fp) ? 'var(--accent)' : 'var(--border)',
+            });
+
+            // Service color coding per folder
+            const serviceColor = getServiceColor(fp);
+            c.style.stroke = selectedFiles.has(fp) ? 'var(--accent)' : serviceColor;
+
+            const label1 = sv('text', { y: -8, 'font-size': '10px', fill: 'var(--muted)' }, shortPath(fp).split('/')[0] || '');
+            const label2 = sv('text', { y: 8, 'font-size': '11px', fill: 'var(--text)', 'font-weight': '600' }, baseName(fp));
+
+            const { funcs, endpoints } = fileMap.get(fp);
+            const badge = sv('text', { y: 28, 'font-size': '9px', fill: 'var(--muted)' }, `${funcs.length + endpoints.length} fn`);
+
+            g.appendChild(c);
+            g.appendChild(label1);
+            g.appendChild(label2);
+            g.appendChild(badge);
+
+            g.addEventListener('click', e => { e.stopPropagation(); onFileClick(fp); });
+            g.addEventListener('mousemove', e => showTooltip(e, { name: baseName(fp), path: fp, kind: 'file', extra: `${funcs.length} functions, ${endpoints.length} endpoints` }));
+            g.addEventListener('mouseleave', hideTooltip);
+
+            makeDraggable(g, 'file:' + fp);
+
+            nodesLayer.appendChild(g);
+        }
+
+        function renderFunctionNodes(fp) {
+            const { funcs, endpoints } = fileMap.get(fp);
+            const all = [...funcs, ...endpoints];
+
+            for (const fn of all) {
+                const id = 'fn:' + fn.name + ':' + fp;
+                const pos = nodePos.get(id);
+                if (!pos) continue;
+
+                const isEndpoint = fn.kind === 'endpoint';
+                const g = sv('g', { class: 'fn-node', transform: `translate(${pos.x},${pos.y})` });
+
+                const c = sv('circle', {
+                    r: FN_R,
+                    stroke: isEndpoint ? 'var(--accent2)' : 'var(--green)',
+                });
+                const label = sv('text', { y: FN_R + 12, 'font-size': '9px', fill: 'var(--muted)' }, fn.name.length > 16 ? fn.name.slice(0, 15) + '…' : fn.name);
+
+                g.appendChild(c);
+                g.appendChild(label);
+
+                g.addEventListener('mousemove', e => showTooltip(e, { name: fn.name, path: fp, kind: fn.kind }));
+                g.addEventListener('mouseleave', hideTooltip);
+                makeDraggable(g, id);
+
+                nodesLayer.appendChild(g);
+            }
+        }
+
+        function renderEdges() {
+            const selectedArr = [...selectedFiles];
+            const isTwoSelected = selectedArr.length === 2;
+
+            // Cross-file edges when two files selected
+            if (isTwoSelected) {
+                const [fpA, fpB] = selectedArr;
+                const { funcs: fA, endpoints: eA } = fileMap.get(fpA) || { funcs: [], endpoints: [] };
+                const { funcs: fB, endpoints: eB } = fileMap.get(fpB) || { funcs: [], endpoints: [] };
+                const namesA = new Set([...fA, ...eA].map(n => n.name));
+                const namesB = new Set([...fB, ...eB].map(n => n.name));
+
+                for (const edge of rawEdges) {
+                    const srcInA = namesA.has(edge.source), srcInB = namesB.has(edge.source);
+                    const tgtInA = namesA.has(edge.target), tgtInB = namesB.has(edge.target);
+                    const isCross = (srcInA && tgtInB) || (srcInB && tgtInA);
+                    if (!isCross) continue;
+
+                    const srcFilePath = srcInA ? fpA : fpB;
+                    const tgtFilePath = srcInA ? fpB : fpA;
+
+                    // Find positions
+                    const srcPos = findFnPos(edge.source, srcFilePath) || nodePos.get('file:' + srcFilePath);
+                    const tgtPos = findFnPos(edge.target, tgtFilePath) || nodePos.get('file:' + tgtFilePath);
+                    if (!srcPos || !tgtPos) continue;
+
+                    const line = sv('path', {
+                        class: 'edge cross-file',
+                        d: curvePath(srcPos, tgtPos),
+                        'marker-end': 'url(#arrow-cross)',
+                    });
+                    edgesLayer.appendChild(line);
+                }
+            }
+
+            // Internal (within expanded files) edges
+            for (const fp of expandedFiles) {
+                const { funcs, endpoints } = fileMap.get(fp);
+                const names = new Set([...funcs, ...endpoints].map(n => n.name));
+                for (const edge of rawEdges) {
+                    if (edge.type === 'CALLS_EXTERNAL') continue;
+                    const srcInFile = names.has(edge.source);
+                    const tgtInFile = names.has(edge.target);
+                    if (!srcInFile || !tgtInFile) continue;
+
+                    const srcPos = findFnPos(edge.source, fp);
+                    const tgtPos = findFnPos(edge.target, fp);
+                    if (!srcPos || !tgtPos || srcPos === tgtPos) continue;
+
+                    const isSelf = edge.source === edge.target;
+                    if (isSelf) continue;
+
+                    const line = sv('path', {
+                        class: 'edge',
+                        d: curvePath(srcPos, tgtPos),
+                        'marker-end': 'url(#arrow)',
+                    });
+                    edgesLayer.appendChild(line);
+                }
+            }
+        }
+
+        function findFnPos(fnName, fp) {
+            return nodePos.get('fn:' + fnName + ':' + fp);
+        }
+
+        function curvePath(a, b) {
+            const mx = (a.x + b.x) / 2;
+            const my = (a.y + b.y) / 2 - 30;
+            return `M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`;
+        }
+
+        // ─── INTERACTION ─────────────────────────────────────────────────────────────
+        function onFileClick(fp) {
+            const wasExpanded = expandedFiles.has(fp);
+
+            // Toggle expand
+            if (wasExpanded) {
+                expandedFiles.delete(fp);
+                selectedFiles.delete(fp);
+            } else {
+                layoutFunctions(fp);
+                expandedFiles.add(fp);
+
+                // Selection: max 2
+                selectedFiles.add(fp);
+                if (selectedFiles.size > 2) {
+                    const [first] = selectedFiles;
+                    selectedFiles.delete(first);
+                    expandedFiles.delete(first);
+                }
+            }
+
+            if (selectedFiles.size > 0) openPanel([...selectedFiles]);
+            else closePanel();
+
+            render();
+            setStatus(
+                selectedFiles.size === 2
+                    ? `Showing cross-file calls between ${[...selectedFiles].map(baseName).join(' ↔ ')}`
+                    : selectedFiles.size === 1
+                        ? `Expanded: ${baseName(fp)} — click another file to see cross-file calls`
+                        : 'Click a file to explore',
+                selectedFiles.size === 2 ? [...selectedFiles].map(baseName).join(' ↔ ') : ''
+            );
+        }
+
+        // ─── PANEL ───────────────────────────────────────────────────────────────────
+        function openPanel(fps) {
+            const fpA = fps[0], fpB = fps[1];
+            const panelTitle = document.getElementById('panelTitle');
+            const fnList = document.getElementById('fnList');
+            const crossList = document.getElementById('crossList');
+            const extList = document.getElementById('extList');
+            const panelCross = document.getElementById('panelCross');
+            const panelExt = document.getElementById('panelExt');
+
+            if (fpB) {
+                panelTitle.textContent = baseName(fpA) + ' ↔ ' + baseName(fpB);
+            } else {
+                panelTitle.textContent = baseName(fpA);
+            }
+
+            // Functions
+            fnList.innerHTML = '';
+            for (const fp of fps) {
+                const { funcs, endpoints } = fileMap.get(fp) || { funcs: [], endpoints: [] };
+                for (const fn of [...funcs, ...endpoints]) {
+                    const li = document.createElement('li');
+                    li.textContent = fn.name;
+                    li.style.borderLeftColor = fn.kind === 'endpoint' ? 'var(--accent2)' : 'var(--green)';
+                    fnList.appendChild(li);
+                }
+            }
+
+            // Cross-file calls
+            if (fpB) {
+                panelCross.style.display = '';
+                crossList.innerHTML = '';
+                const { funcs: fA, endpoints: eA } = fileMap.get(fpA) || { funcs: [], endpoints: [] };
+                const { funcs: fB, endpoints: eB } = fileMap.get(fpB) || { funcs: [], endpoints: [] };
+                const namesA = new Set([...fA, ...eA].map(n => n.name));
+                const namesB = new Set([...fB, ...eB].map(n => n.name));
+
+                const crosses = [];
+                for (const edge of rawEdges) {
+                    const srcA = namesA.has(edge.source), tgtB = namesB.has(edge.target);
+                    const srcB = namesB.has(edge.source), tgtA = namesA.has(edge.target);
+                    if ((srcA && tgtB) || (srcB && tgtA)) crosses.push(edge);
+                }
+
+                if (crosses.length === 0) {
+                    const li = document.createElement('li');
+                    li.textContent = 'No direct calls between these files';
+                    li.style.borderLeftColor = 'var(--muted)';
+                    li.style.color = 'var(--muted)';
+                    crossList.appendChild(li);
+                } else {
+                    for (const e of crosses) {
+                        const li = document.createElement('li');
+                        li.textContent = `${e.source} → ${e.target}`;
+                        crossList.appendChild(li);
+                    }
+                }
+            } else {
+                panelCross.style.display = 'none';
+            }
+
+            // External calls
+            const allFns = fps.flatMap(fp => {
+                const { funcs, endpoints } = fileMap.get(fp) || { funcs: [], endpoints: [] };
+                return [...funcs, ...endpoints].map(n => n.name);
+            });
+            const extCalls = rawEdges
+                .filter(e => e.type === 'CALLS_EXTERNAL' && allFns.includes(e.source))
+                .map(e => e.target);
+            const uniqueExt = [...new Set(extCalls)];
+
+            if (uniqueExt.length > 0) {
+                panelExt.style.display = '';
+                extList.innerHTML = '';
+                for (const ext of uniqueExt) {
+                    const li = document.createElement('li');
+                    li.className = 'ext';
+                    li.textContent = ext;
+                    extList.appendChild(li);
+                }
+            } else {
+                panelExt.style.display = 'none';
+            }
+
+            panel.classList.add('open');
+        }
+
+        function closePanel() {
+            panel.classList.remove('open');
+        }
+
+        document.getElementById('panelClose').addEventListener('click', () => {
+            selectedFiles.clear();
+            expandedFiles.clear();
+            closePanel();
+            render();
+        });
+
+        // ─── TOOLTIP ─────────────────────────────────────────────────────────────────
+        function showTooltip(e, info) {
+            tooltip.innerHTML = `
+    <div class="tt-name">${info.name}</div>
+    ${info.path ? `<div class="tt-path">${info.path}</div>` : ''}
+    <div class="tt-kind">${info.kind}${info.extra ? ' · ' + info.extra : ''}</div>
+  `;
+            tooltip.classList.add('visible');
+            moveTooltip(e);
+        }
+        function hideTooltip() { tooltip.classList.remove('visible'); }
+        function moveTooltip(e) {
+            const x = e.clientX + 14, y = e.clientY + 14;
+            tooltip.style.left = Math.min(x, window.innerWidth - 320) + 'px';
+            tooltip.style.top = Math.min(y, window.innerHeight - 120) + 'px';
+        }
+        document.addEventListener('mousemove', e => {
+            if (tooltip.classList.contains('visible')) moveTooltip(e);
+        });
+
+        // ─── DRAG (nodes) ─────────────────────────────────────────────────────────────
+        function makeDraggable(el, nodeId) {
+            el.addEventListener('mousedown', e => {
+                if (e.button !== 0) return;
+                e.stopPropagation();
+                drag = { nodeId, startX: e.clientX, startY: e.clientY, origPos: { ...nodePos.get(nodeId) } };
+                window.addEventListener('mousemove', onDragMove);
+                window.addEventListener('mouseup', onDragUp);
+            });
+        }
+
+        function onDragMove(e) {
+            if (!drag) return;
+            const dx = (e.clientX - drag.startX) / vscale;
+            const dy = (e.clientY - drag.startY) / vscale;
+            nodePos.set(drag.nodeId, { x: drag.origPos.x + dx, y: drag.origPos.y + dy });
+            render();
+        }
+        function onDragUp() {
+            drag = null;
+            window.removeEventListener('mousemove', onDragMove);
+            window.removeEventListener('mouseup', onDragUp);
+        }
+
+        // ─── PAN ─────────────────────────────────────────────────────────────────────
+        const wrap = document.getElementById('canvas-wrap');
+        wrap.addEventListener('mousedown', e => {
+            if (e.button !== 0 || drag) return;
+            isPanning = true;
+            panStart = { x: e.clientX - vx, y: e.clientY - vy };
+        });
+        window.addEventListener('mousemove', e => {
+            if (!isPanning) return;
+            vx = e.clientX - panStart.x;
+            vy = e.clientY - panStart.y;
+            applyTransform();
+        });
+        window.addEventListener('mouseup', () => { isPanning = false; });
+        wrap.addEventListener('wheel', e => {
+            e.preventDefault();
+            const delta = e.deltaY < 0 ? 1.1 : 0.9;
+            vscale = Math.min(3, Math.max(0.2, vscale * delta));
+            applyTransform();
+        }, { passive: false });
+
+        function applyTransform() {
+            nodesLayer.setAttribute('transform', `translate(${vx},${vy}) scale(${vscale})`);
+            edgesLayer.setAttribute('transform', `translate(${vx},${vy}) scale(${vscale})`);
+        }
+
+        wrap.addEventListener('click', e => {
+            if (e.target === svg || e.target === wrap) {
+                selectedFiles.clear();
+                expandedFiles.clear();
+                closePanel();
+                render();
+            }
+        });
+
+        // ─── LOAD ─────────────────────────────────────────────────────────────────────
+        document.getElementById('loadBtn').addEventListener('click', loadGraph);
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            vx = 0; vy = 0; vscale = 1;
+            applyTransform();
+            selectedFiles.clear(); expandedFiles.clear();
+            closePanel();
+            render();
+        });
+
+        async function loadGraph() {
+            const ws = document.getElementById('wsInput').value.trim();
+            const repo = document.getElementById('repoInput').value.trim();
+            const base = document.getElementById('apiBase').value;
+
+            if (!ws || !repo) { setStatus('⚠ Enter both workspaceId and repoId'); return; }
+
+            setStatus('Loading…');
+            try {
+                const url = `${base}/graph/${ws}/repo/${repo}`;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                rawNodes = data.nodes;
+                rawEdges = data.edges;
+                processData(data);
+                layoutFiles();
+                render();
+                setStatus(`Loaded — ${fileOrder.length} files, ${rawNodes.length} entities, ${rawEdges.length} edges. Click a file to expand.`, `${fileOrder.length} files`);
+            } catch (err) {
+                setStatus(`⚠ Failed to load: ${err.message}`);
+            }
+        }
+
+        // ─── SERVICE COLOR CODING ─────────────────────────────────────────────────────
+        function getServiceColor(fp) {
+            if (fp.includes('ingestion-service')) return '#6c8ef7';
+            if (fp.includes('graph-service')) return '#a78bfa';
+            if (fp.includes('workspace-service')) return '#34d399';
+            if (fp.includes('vector-service')) return '#fbbf24';
+            if (fp.includes('search-service')) return '#f472b6';
+            if (fp.includes('ci-vuln-service')) return '#fb923c';
+            if (fp.includes('auth-service')) return '#38bdf8';
+            return '#475569';
+        }
+
+        // Auto-load on page open
+        window.addEventListener('load', () => {
+            const ws = document.getElementById('wsInput').value;
+            const repo = document.getElementById('repoInput').value;
+            if (ws && repo) loadGraph();
+        });
+    </script>
+</body>
+
+</html>

@@ -1,5 +1,7 @@
 import Parser from 'web-tree-sitter';
 import { ExtractedEntity, ExtractedImport, ExtractedCall, ExtractionResult } from './types';
+import { CALL_BLOCKLIST } from './callFilter';
+
 
 // Handles both C and C++ files (.c, .cpp, .cc, .h)
 // TODO: v2 — Cross-service call detection (HTTP clients, sockets etc.)
@@ -89,11 +91,10 @@ function walkCTree(root: Parser.SyntaxNode, filePath: string, language: 'c' | 'c
       case 'call_expression': {
         const fnNode = node.childForFieldName('function');
         if (fnNode && currentFunctionName) {
-          calls.push({
-            callerName: currentFunctionName,
-            calleeName: fnNode.text,
-            filePath,
-          });
+          const calleeName = fnNode.text;
+          if (!CALL_BLOCKLIST.has(calleeName)) {
+            calls.push({ callerName: currentFunctionName, calleeName, filePath });
+          }
         }
         break;
       }

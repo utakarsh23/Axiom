@@ -9,25 +9,40 @@ import { logger } from '../logger';
 async function handleRelationAdded(payload: any): Promise<void> {
   const { callerName, calleeName, filePath, repoId, workspaceId, commitHash } = payload;
 
-  // Check if callee is a known entity in this workspace
-  const records = await runQuery(
-    `MATCH (e { name: $calleeName, workspaceId: $workspaceId })
+  // Two-pass lookup: FIRST try same-repo, THEN fallback to cross-repo.
+  // This prevents connectNats in ci-vuln-service from resolving to
+  // workspace-service's connectNats when both exist.
+  let records = await runQuery(
+    `MATCH (e { name: $calleeName, repoId: $repoId, workspaceId: $workspaceId })
      WHERE e.validTo IS NULL
-     RETURN e LIMIT 1`,
-    { calleeName, workspaceId }
+     RETURN e.entityId AS entityId
+     LIMIT 1`,
+    { calleeName, repoId, workspaceId }
   );
 
+  // Fallback: look in other repos within the same workspace (true cross-service call)
+  if (records.length === 0) {
+    records = await runQuery(
+      `MATCH (e { name: $calleeName, workspaceId: $workspaceId })
+       WHERE e.validTo IS NULL AND e.repoId <> $repoId
+       RETURN e.entityId AS entityId
+       LIMIT 1`,
+      { calleeName, repoId, workspaceId }
+    );
+  }
+
   if (records.length > 0) {
-    // MERGE on structural identity only — validFrom must NOT be in the MERGE pattern
-    // If validFrom were included, replaying with a different commitHash creates a duplicate edge
+    const calleeEntityId = records[0].get('entityId');
+
+    // Pin callee by entityId — avoids matching multiple nodes with same name
     await runQuery(
       `MATCH (caller { name: $callerName, filePath: $filePath, repoId: $repoId, workspaceId: $workspaceId })
        WHERE caller.validTo IS NULL
-       MATCH (callee { name: $calleeName, workspaceId: $workspaceId })
+       MATCH (callee { entityId: $calleeEntityId })
        WHERE callee.validTo IS NULL
        MERGE (caller)-[r:CALLS { workspaceId: $workspaceId }]->(callee)
        ON CREATE SET r.validFrom = $commitHash, r.validTo = null`,
-      { callerName, calleeName, filePath, repoId, workspaceId, commitHash }
+      { callerName, filePath, repoId, workspaceId, commitHash, calleeEntityId }
     );
 
     logger.info({ callerName, calleeName, repoId }, 'CALLS edge created');

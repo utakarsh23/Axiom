@@ -20,7 +20,7 @@ async function stopSubscribers(): Promise<void> {
   for (const sub of subscriptions) {
     sub.unsubscribe();
   }
-  await nc?.drain();
+  try { await nc?.drain(); } catch { /* connection may already be closed */ }
 }
 
 // Listens for REPO_ADDED — triggers Full Mode (cold start ingestion)

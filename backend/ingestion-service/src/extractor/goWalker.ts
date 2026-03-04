@@ -1,5 +1,7 @@
 import Parser from 'web-tree-sitter';
 import { ExtractedEntity, ExtractedImport, ExtractedCall, ExtractionResult } from './types';
+import { resolveCallee } from './callFilter';
+
 
 // TODO: v2 — Cross-service call detection (HTTP clients, gRPC, Kafka etc.)
 // See backend/Todo.md for full list
@@ -95,15 +97,17 @@ function walkGoTree(root: Parser.SyntaxNode, filePath: string): ExtractionResult
       case 'call_expression': {
         const fnNode = node.childForFieldName('function');
         if (fnNode && currentFunctionName) {
-          const calleeName = fnNode.type === 'selector_expression'
-            ? fnNode.childForFieldName('field')?.text ?? fnNode.text
-            : fnNode.text;
-
-          calls.push({
-            callerName: currentFunctionName,
-            calleeName,
-            filePath,
-          });
+          let calleeName: string | null;
+          if (fnNode.type === 'selector_expression') {
+            const objectName = fnNode.childForFieldName('operand')?.text ?? null;
+            const propertyName = fnNode.childForFieldName('field')?.text ?? null;
+            calleeName = resolveCallee(fnNode.text, objectName, propertyName);
+          } else {
+            calleeName = resolveCallee(fnNode.text, null, null);
+          }
+          if (calleeName) {
+            calls.push({ callerName: currentFunctionName, calleeName, filePath });
+          }
         }
         break;
       }

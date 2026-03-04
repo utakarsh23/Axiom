@@ -1,5 +1,7 @@
 import Parser from 'web-tree-sitter';
 import { ExtractedEntity, ExtractedImport, ExtractedCall, ExtractionResult } from './types';
+import { CALL_BLOCKLIST } from './callFilter';
+
 
 // TODO: v2 — Cross-service call detection (Kafka, RabbitMQ, HTTP clients etc.)
 // See backend/Todo.md for full list
@@ -78,11 +80,10 @@ function walkJavaTree(root: Parser.SyntaxNode, filePath: string): ExtractionResu
       case 'method_invocation': {
         const nameNode = node.childForFieldName('name');
         if (nameNode && currentFunctionName) {
-          calls.push({
-            callerName: currentFunctionName,
-            calleeName: nameNode.text,
-            filePath,
-          });
+          const calleeName = nameNode.text;
+          if (!CALL_BLOCKLIST.has(calleeName)) {
+            calls.push({ callerName: currentFunctionName, calleeName, filePath });
+          }
         }
         break;
       }

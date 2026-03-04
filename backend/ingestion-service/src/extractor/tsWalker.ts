@@ -1,5 +1,6 @@
 import Parser from 'web-tree-sitter';
 import { ExtractedEntity, ExtractedImport, ExtractedCall, ExtractionResult } from './types';
+import { resolveCallee } from './callFilter';
 
 
 // TODO: v2 — Cross-service call detection
@@ -171,9 +172,10 @@ function walkTsTree(
               const args = node.childForFieldName('arguments');
               const firstArg = args?.children.find(c => c.type === 'string');
               if (firstArg) {
+                const endpointName = `${method.toUpperCase()} ${firstArg.text.replace(/['"]/g, '')}`;
                 entities.push({
                   kind: 'endpoint',
-                  name: `${method.toUpperCase()} ${firstArg.text.replace(/['"]/g, '')}`,
+                  name: endpointName,
                   filePath,
                   language: 'typescript',
                   startLine: node.startPosition.row + 1,
@@ -181,21 +183,72 @@ function walkTsTree(
                   rawSignature: `${method.toUpperCase()} ${firstArg.text}`,
                   rawBody: node.text,
                 });
+
+                // Extract handler/middleware references from remaining arguments
+                // e.g. router.post('/login', authMiddleware, login)
+                //                           ^^^^^^^^^^^^^^  ^^^^^  ← these are handler refs
+                if (args) {
+                  for (const arg of args.children) {
+                    // Skip the path string, commas, and parentheses
+                    if (arg.type === 'string' || arg.type === ',' || arg.type === '(' || arg.type === ')') continue;
+                    // Identifier = direct function reference (e.g. login, authMiddleware)
+                    if (arg.type === 'identifier') {
+                      calls.push({ callerName: endpointName, calleeName: arg.text, filePath });
+                    }
+                    // Member expression = namespaced ref (e.g. controller.login)
+                    if (arg.type === 'member_expression') {
+                      const prop = arg.childForFieldName('property')?.text;
+                      if (prop) {
+                        calls.push({ callerName: endpointName, calleeName: prop, filePath });
+                      }
+                    }
+                  }
+                }
               }
             }
           }
 
           // Record the call if we are inside a known function
           if (currentFunctionName) {
-            const calleeName = fnNode.type === 'member_expression'
-              ? fnNode.childForFieldName('property')?.text ?? fnNode.text
-              : fnNode.text;
+            let calleeName: string | null;
 
-            calls.push({
-              callerName: currentFunctionName,
-              calleeName,
-              filePath,
-            });
+            // Unwrap await: `await foo.bar()` — fnNode may be an await_expression
+            // whose child is the actual call. Re-examine the unwrapped child.
+            let effectiveFn = fnNode;
+            if (effectiveFn.type === 'await_expression') {
+              // The inner expression is always the first named child
+              effectiveFn = effectiveFn.firstNamedChild ?? effectiveFn;
+            }
+
+            if (effectiveFn.type === 'member_expression') {
+              let objectNode = effectiveFn.childForFieldName('object');
+              const propertyName = effectiveFn.childForFieldName('property')?.text ?? null;
+
+              // Unwrap chained calls: a.b().c() — object is a call_expression
+              // Walk up until we find an identifier or simple member_expression
+              while (
+                objectNode &&
+                (objectNode.type === 'call_expression' || objectNode.type === 'await_expression')
+              ) {
+                // For call_expression, the function field is the callee chain
+                const inner = objectNode.childForFieldName('function') ?? objectNode.firstNamedChild;
+                objectNode = inner ?? objectNode;
+                if (!inner || inner === objectNode) break;
+              }
+
+              // At this point objectNode is the root member_expression or identifier
+              const objectName = objectNode?.type === 'member_expression'
+                ? (objectNode.childForFieldName('object')?.text ?? objectNode.text)
+                : (objectNode?.text ?? null);
+
+              calleeName = resolveCallee(effectiveFn.text, objectName, propertyName);
+            } else {
+              calleeName = resolveCallee(effectiveFn.text, null, null);
+            }
+
+            if (calleeName) {
+              calls.push({ callerName: currentFunctionName, calleeName, filePath });
+            }
           }
         }
         break;
