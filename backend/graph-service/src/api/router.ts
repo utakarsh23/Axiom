@@ -5,6 +5,9 @@ import {
   getRepoGraph,
   getImpact,
   getTimelineGraph,
+  getEntryFiles,
+  getFileFunctions,
+  getFunctionCalls,
 } from '../services/graphService';
 
 const graphRouter = Router();
@@ -59,6 +62,55 @@ graphRouter.get('/:workspaceId/timeline', async (req: Request, res: Response) =>
   } catch (error: any) {
     logger.error({ workspaceId, commit, error }, 'Failed to fetch timeline graph');
     res.status(500).json({ error: 'Failed to fetch timeline graph' });
+  }
+});
+
+// ── Lazy-expand endpoints (per frontend.md) ──────────────────────────────────
+
+graphRouter.get('/:workspaceId/:repoId/entry-files', async (req: Request, res: Response) => {
+  const workspaceId = req.params.workspaceId as string;
+  const repoId = req.params.repoId as string;
+  try {
+    const result = await getEntryFiles(workspaceId, repoId);
+    res.json(result);
+  } catch (error: any) {
+    logger.error({ workspaceId, repoId, error }, 'Failed to fetch entry files');
+    res.status(500).json({ error: 'Failed to fetch entry files' });
+  }
+});
+
+graphRouter.get('/:workspaceId/:repoId/file-functions', async (req: Request, res: Response) => {
+  const workspaceId = req.params.workspaceId as string;
+  const repoId = req.params.repoId as string;
+  const filePath = req.query.filePath as string;
+  if (!filePath) {
+    res.status(400).json({ error: 'filePath query parameter is required' });
+    return;
+  }
+  try {
+    const result = await getFileFunctions(workspaceId, repoId, filePath);
+    res.json(result);
+  } catch (error: any) {
+    logger.error({ workspaceId, repoId, filePath, error }, 'Failed to fetch file functions');
+    res.status(500).json({ error: 'Failed to fetch file functions' });
+  }
+});
+
+graphRouter.get('/:workspaceId/:repoId/function-calls', async (req: Request, res: Response) => {
+  const workspaceId = req.params.workspaceId as string;
+  const repoId = req.params.repoId as string;
+  const name = req.query.name as string;
+  const filePath = req.query.filePath as string;
+  if (!name || !filePath) {
+    res.status(400).json({ error: 'name and filePath query parameters are required' });
+    return;
+  }
+  try {
+    const result = await getFunctionCalls(workspaceId, repoId, name, filePath);
+    res.json(result);
+  } catch (error: any) {
+    logger.error({ workspaceId, repoId, name, filePath, error }, 'Failed to fetch function calls');
+    res.status(500).json({ error: 'Failed to fetch function calls' });
   }
 });
 

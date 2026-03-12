@@ -130,4 +130,4 @@ edges: Array<{ from: string, to: string, type: 'CALLS' | 'CALLS_EXTERNAL' | 'API
 - ✅ `tsWalker.ts` — Express router handler extraction (endpoint → handler/middleware `CALLS`)
 - ✅ `endpointMatcher.ts` — NEW — auto-creates `API_CALL` edges between matching endpoints in workspace
 - ✅ `subscriber.ts` — wired endpoint matching into `ENTITY_CREATED` flow
-- ⬜ graph-service — 3 new GET endpoints for lazy graph expansion (TBD)
+- ✅ graph-service — 3 new GET endpoints for lazy graph expansion (entry-files, file-functions, function-calls)

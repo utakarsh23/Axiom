@@ -31,6 +31,15 @@ services:
       - documentation-service
       - search-service
       - ci-vuln-service
+      - frontend
+
+  # ── Frontend ─────────────────────────────────────────────────────────────────
+
+  frontend:
+    build: ./frontend
+    container_name: axiom-frontend
+    restart: unless-stopped
+    networks: [axiom]
 
   # ── Services ─────────────────────────────────────────────────────────────────
 

@@ -48,12 +48,12 @@ async function getWorkspaceGraph(workspaceId: string) {
     ...edgeRecords.map(r => ({
       source: r.get('source'),
       target: r.get('target'),
-      type:   r.get('type'),
+      type: r.get('type'),
     })),
     ...externalEdgeRecords.map(r => ({
       source: r.get('source'),
       target: r.get('target'),
-      type:   'CALLS_EXTERNAL',
+      type: 'CALLS_EXTERNAL',
     })),
   ];
 
@@ -92,12 +92,12 @@ async function getRepoGraph(workspaceId: string, repoId: string) {
     ...edgeRecords.map(r => ({
       source: r.get('source'),
       target: r.get('target'),
-      type:   r.get('type'),
+      type: r.get('type'),
     })),
     ...externalEdgeRecords.map(r => ({
       source: r.get('source'),
       target: r.get('target'),
-      type:   'CALLS_EXTERNAL',
+      type: 'CALLS_EXTERNAL',
     })),
   ];
 
@@ -135,8 +135,8 @@ async function getImpact(workspaceId: string, entityName: string) {
   );
 
   return {
-    entity:     selfRecords.map(r => toPlain(r, 'e'))[0] ?? null,
-    upstream:   upstreamRecords.map(r => toPlain(r, 'upstream')),
+    entity: selfRecords.map(r => toPlain(r, 'e'))[0] ?? null,
+    upstream: upstreamRecords.map(r => toPlain(r, 'upstream')),
     downstream: downstreamRecords.map(r => toPlain(r, 'downstream')),
   };
 }
@@ -168,9 +168,79 @@ async function getTimelineGraph(workspaceId: string, commit: string) {
     edges: edgeRecords.map(r => ({
       source: r.get('source'),
       target: r.get('target'),
-      type:   r.get('type'),
+      type: r.get('type'),
     })),
   };
 }
 
-export { getWorkspaceGraph, getRepoGraph, getImpact, getTimelineGraph };
+// ── Lazy-expand endpoints (per frontend.md) ─────────────────────────────────
+
+// Returns entry-point files — functions with zero incoming CALLS edges
+async function getEntryFiles(workspaceId: string, repoId: string) {
+  const records = await runQuery(
+    `MATCH (n:Function { workspaceId: $workspaceId, repoId: $repoId })
+     WHERE n.validTo IS NULL AND NOT ()-[:CALLS]->(n)
+     RETURN DISTINCT n.filePath AS file, collect(n.name) AS functions`,
+    { workspaceId, repoId }
+  );
+
+  return {
+    files: records.map(r => ({
+      file: r.get('file'),
+      functions: r.get('functions'),
+    })),
+  };
+}
+
+// Returns all entities inside a specific file
+async function getFileFunctions(workspaceId: string, repoId: string, filePath: string) {
+  const records = await runQuery(
+    `MATCH (n { workspaceId: $workspaceId, repoId: $repoId, filePath: $filePath })
+     WHERE n.validTo IS NULL
+     RETURN n.name AS name, n.kind AS kind, labels(n)[0] AS type`,
+    { workspaceId, repoId, filePath }
+  );
+
+  return {
+    functions: records.map(r => ({
+      name: r.get('name'),
+      kind: r.get('kind'),
+      type: r.get('type'),
+    })),
+  };
+}
+
+// Returns what a specific function calls — internal + external
+async function getFunctionCalls(
+  workspaceId: string,
+  repoId: string,
+  name: string,
+  filePath: string
+) {
+  const records = await runQuery(
+    `MATCH (n:Function { workspaceId: $workspaceId, repoId: $repoId, name: $name, filePath: $filePath })
+     WHERE n.validTo IS NULL
+     OPTIONAL MATCH (n)-[:CALLS]->(internal) WHERE internal.validTo IS NULL
+     OPTIONAL MATCH (n)-[:CALLS_EXTERNAL]->(ext) WHERE ext.validTo IS NULL
+     RETURN
+       collect(DISTINCT { name: internal.name, file: internal.filePath, kind: internal.kind }) AS internalCalls,
+       collect(DISTINCT { name: ext.name }) AS externalCalls`,
+    { workspaceId, repoId, name, filePath }
+  );
+
+  const row = records[0];
+  return {
+    internalCalls: row ? row.get('internalCalls').filter((c: any) => c.name !== null) : [],
+    externalCalls: row ? row.get('externalCalls').filter((c: any) => c.name !== null) : [],
+  };
+}
+
+export {
+  getWorkspaceGraph,
+  getRepoGraph,
+  getImpact,
+  getTimelineGraph,
+  getEntryFiles,
+  getFileFunctions,
+  getFunctionCalls,
+};
