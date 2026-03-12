@@ -51,6 +51,8 @@ export const workspaces = {
     create: (name: string) => apiFetch("/workspaces", { method: "POST", body: JSON.stringify({ name }) }),
     get: (id: string) => apiFetch(`/workspaces/${id}`),
     delete: (id: string) => apiFetch(`/workspaces/${id}`, { method: "DELETE" }),
+    setInstallation: (id: string, installationId: number) =>
+        apiFetch(`/workspaces/${id}/installation`, { method: "PATCH", body: JSON.stringify({ installationId }) }),
     rulebook: {
         get: (id: string) => apiFetch(`/workspaces/${id}/rulebook`),
         update: (id: string, rulebook: any) => apiFetch(`/workspaces/${id}/rulebook`, { method: "PUT", body: JSON.stringify(rulebook) }),

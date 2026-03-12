@@ -36,7 +36,10 @@ services:
   # ── Frontend ─────────────────────────────────────────────────────────────────
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        GITHUB_APP_NAME: ${GITHUB_APP_NAME:-Scrouges}
     container_name: axiom-frontend
     restart: unless-stopped
     networks: [axiom]

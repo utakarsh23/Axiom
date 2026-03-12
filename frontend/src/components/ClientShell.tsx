@@ -7,8 +7,8 @@ import { Sidebar } from "./Sidebar";
 export function ClientShell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
 
-    // Hide sidebar on the login page (/) and the dashboard (/dashboard)
-    const hideSidebar = pathname === "/" || pathname === "/dashboard";
+    // Hide sidebar on login, dashboard, workspace setup, and GitHub App install callback
+    const hideSidebar = pathname === "/" || pathname === "/dashboard" || pathname === "/workspace" || pathname === "/install";
 
     return (
         <>

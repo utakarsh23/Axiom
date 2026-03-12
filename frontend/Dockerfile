@@ -3,6 +3,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+ARG GITHUB_APP_NAME
+ENV NEXT_PUBLIC_GITHUB_APP_NAME=${GITHUB_APP_NAME}
 RUN npm run build
 
 FROM node:20-alpine AS runner

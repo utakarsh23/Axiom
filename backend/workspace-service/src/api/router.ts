@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { WorkspaceModel } from '../model/workspaceModel';
+import { RepoModel } from '../model/repoModel';
 
 import {
   handleListWorkspaces,
@@ -26,7 +27,22 @@ router.get('/workspaces', async (req: Request, res: Response) => {
   try {
     const userId = req.headers['x-user-id'] as string;
     const workspaces = await handleListWorkspaces(userId);
-    res.json({ workspaces });
+
+    // Aggregate repo counts for all workspaces in a single query
+    const ids = workspaces.map((w: any) => w._id.toString());
+    const counts = await RepoModel.aggregate([
+      { $match: { workspaceId: { $in: ids } } },
+      { $group: { _id: '$workspaceId', count: { $sum: 1 } } },
+    ]);
+    const countMap: Record<string, number> = {};
+    counts.forEach((c: any) => { countMap[c._id] = c.count; });
+
+    const enriched = workspaces.map((w: any) => ({
+      ...w,
+      repoCount: countMap[w._id.toString()] || 0,
+    }));
+
+    res.json({ workspaces: enriched });
   } catch (err: any) {
     res.status(err.status ?? 500).json({ error: err.message });
   }

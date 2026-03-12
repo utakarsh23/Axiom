@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Network, Search, GitBranch, Settings, CheckCircle2, AlertTriangle, ArrowRight, Loader2, Building2 } from "lucide-react";
-import { workspaces as wsApi, repos as repoApi } from "@/lib/api";
+import { Network, Search, GitBranch, Settings, CheckCircle2, ArrowRight, Loader2, Building2 } from "lucide-react";
+import { workspaces as wsApi } from "@/lib/api";
 
 export default function DashboardPage() {
     const router = useRouter();
@@ -19,8 +19,6 @@ export default function DashboardPage() {
     // Create modal
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [wsName, setWsName] = useState("");
-    const [repoUrl, setRepoUrl] = useState("");
-    const [repoName, setRepoName] = useState("");
     const [isCreating, setIsCreating] = useState(false);
 
     const fetchWorkspaces = async () => {
@@ -30,7 +28,7 @@ export default function DashboardPage() {
             const list = (data.workspaces || []).map((w: any) => ({
                 id: w._id,
                 name: w.name,
-                repoCount: w.repositories?.length || 0,
+                repoCount: w.repoCount ?? w.repositories?.length ?? 0,
                 status: "Healthy",
                 risk: "Low",
                 lastScan: w.updatedAt ? new Date(w.updatedAt).toLocaleString() : "N/A",
@@ -54,7 +52,7 @@ export default function DashboardPage() {
 
     const handleEnter = () => {
         if (selectedWorkspace) {
-            router.push(`/graph?workspaceId=${selectedWorkspace}`);
+            router.push(`/workspace?workspaceId=${selectedWorkspace}`);
         }
     };
 
@@ -64,17 +62,13 @@ export default function DashboardPage() {
         try {
             const data = await wsApi.create(wsName.trim());
             const newWsId = data.workspace?._id;
-            if (newWsId && repoUrl.trim()) {
-                await repoApi.add(newWsId, {
-                    name: repoName.trim() || repoUrl.split("/").pop() || "repo",
-                    gitUrl: repoUrl.trim(),
-                });
-            }
             setIsCreateOpen(false);
             setWsName("");
-            setRepoUrl("");
-            setRepoName("");
-            await fetchWorkspaces();
+            if (newWsId) {
+                router.push(`/workspace?workspaceId=${newWsId}`);
+            } else {
+                await fetchWorkspaces();
+            }
         } catch (err: any) {
             console.error("Create workspace error:", err);
             alert(err.message || "Failed to create workspace");
@@ -119,7 +113,7 @@ export default function DashboardPage() {
                     <h1 className="text-4xl font-black tracking-tight">
                         Welcome back{currentUser?.name ? `, ${currentUser.name.split(" ")[0]}` : ""}.
                     </h1>
-                    <p className="text-[#9A9090] text-base">Select a workspace to begin architectural analysis.</p>
+                    <p className="text-[#9A9090] text-base">Select a workspace to manage repositories and begin analysis.</p>
                 </section>
 
                 {/* Action bar */}
@@ -210,45 +204,29 @@ export default function DashboardPage() {
             {/* Create Workspace Modal */}
             {isCreateOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-                    <div className="bg-card w-full max-w-lg rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                    <div className="bg-card w-full max-w-md rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col">
                         <div className="px-6 py-5 border-b border-border flex items-center justify-between bg-muted/30">
                             <div>
                                 <h2 className="text-xl font-bold flex items-center gap-2">
-                                    <Building2 className="w-5 h-5" /> Create Workspace
+                                    <Building2 className="w-5 h-5" /> New Workspace
                                 </h2>
-                                <p className="text-sm text-muted-foreground mt-1">Add a workspace with an initial repository.</p>
+                                <p className="text-sm text-muted-foreground mt-1">You can add repositories after creation.</p>
                             </div>
                             <Button variant="ghost" size="icon" onClick={() => setIsCreateOpen(false)} className="rounded-full">
                                 <span className="sr-only">Close</span>✕
                             </Button>
                         </div>
 
-                        <div className="p-6 flex-1 overflow-y-auto space-y-4">
+                        <div className="p-6 space-y-4">
                             <div className="space-y-2">
                                 <label className="text-sm font-medium">Workspace Name <span className="text-red-500">*</span></label>
                                 <Input
                                     placeholder="e.g. My Backend Services"
                                     value={wsName}
                                     onChange={(e) => setWsName(e.target.value)}
+                                    onKeyDown={(e) => e.key === "Enter" && handleCreate()}
                                     className="bg-background"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Repository URL</label>
-                                <Input
-                                    placeholder="https://github.com/owner/repo"
-                                    value={repoUrl}
-                                    onChange={(e) => setRepoUrl(e.target.value)}
-                                    className="bg-background"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Repository Name (optional)</label>
-                                <Input
-                                    placeholder="Auto-detected from URL"
-                                    value={repoName}
-                                    onChange={(e) => setRepoName(e.target.value)}
-                                    className="bg-background"
+                                    autoFocus
                                 />
                             </div>
                         </div>
@@ -261,7 +239,7 @@ export default function DashboardPage() {
                                 className="bg-primary text-primary-foreground hover:bg-primary/90"
                             >
                                 {isCreating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                                Create Workspace
+                                Create &amp; Add Repos
                             </Button>
                         </div>
                     </div>
