@@ -148,17 +148,21 @@ async function getImpact(workspaceId: string, entityName: string) {
 async function getTimelineGraph(workspaceId: string, commit: string) {
   const nodeRecords = await runQuery(
     `MATCH (n { workspaceId: $workspaceId })
-     WHERE n.validTo IS NULL OR n.validTo = $commit OR n.validFrom = $commit
-     RETURN n`,
+    WHERE n.validFrom <= $commit
+      AND (n.validTo IS NULL OR n.validTo > $commit)
+    RETURN n`,
     { workspaceId, commit }
   );
 
   const edgeRecords = await runQuery(
     `MATCH (a { workspaceId: $workspaceId })-[r]->(b { workspaceId: $workspaceId })
-     WHERE (r.validTo IS NULL OR r.validTo = $commit OR r.validFrom = $commit)
-       AND (a.validTo IS NULL OR a.validTo = $commit OR a.validFrom = $commit)
-       AND (b.validTo IS NULL OR b.validTo = $commit OR b.validFrom = $commit)
-     RETURN a.name AS source, b.name AS target, type(r) AS type`,
+    WHERE r.validFrom <= $commit
+      AND (r.validTo IS NULL OR r.validTo > $commit)
+      AND a.validFrom <= $commit
+      AND (a.validTo IS NULL OR a.validTo > $commit)
+      AND b.validFrom <= $commit
+      AND (b.validTo IS NULL OR b.validTo > $commit)
+    RETURN a.name AS source, b.name AS target, type(r) AS type`,
     { workspaceId, commit }
   );
 
@@ -235,6 +239,20 @@ async function getFunctionCalls(
   };
 }
 
+async function checkCommitExists(workspaceId: string, commit: string) {
+  const records = await runQuery(
+    `
+    MATCH (n { workspaceId: $workspaceId })
+    WHERE n.validFrom = $commit OR n.validTo = $commit
+    RETURN 1
+    LIMIT 1
+    `,
+    { workspaceId, commit }
+  );
+
+  return records.length > 0;
+}
+
 export {
   getWorkspaceGraph,
   getRepoGraph,
@@ -243,4 +261,5 @@ export {
   getEntryFiles,
   getFileFunctions,
   getFunctionCalls,
+  checkCommitExists
 };

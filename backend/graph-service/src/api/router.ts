@@ -8,6 +8,7 @@ import {
   getEntryFiles,
   getFileFunctions,
   getFunctionCalls,
+  checkCommitExists,
 } from '../services/graphService';
 
 const graphRouter = Router();
@@ -50,13 +51,17 @@ graphRouter.get('/:workspaceId/impact/:entityName', async (req: Request, res: Re
 graphRouter.get('/:workspaceId/timeline', async (req: Request, res: Response) => {
   const workspaceId = req.params.workspaceId as string;
   const { commit } = req.query as { commit?: string };
-
+ 
   if (!commit) {
     res.status(400).json({ error: 'commit query parameter is required' });
     return;
   }
 
   try {
+    const commitExists = await checkCommitExists(workspaceId, commit);
+    if(!commitExists) {
+      return res.status(404).json({ message: 'no such commit found for the repo' });
+    }
     const graph = await getTimelineGraph(workspaceId, commit);
     res.json(graph);
   } catch (error: any) {
