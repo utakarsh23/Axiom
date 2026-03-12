@@ -5,6 +5,7 @@ import { Suspense } from "react";
 
 import { useCallback, useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
+import { Handle, Position } from "reactflow";
 import ReactFlow, {
     Background,
     Controls,
@@ -15,6 +16,8 @@ import ReactFlow, {
     MarkerType,
     Node,
     Edge,
+    ConnectionLineType,
+    SmoothStepEdge,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { Badge } from "@/components/ui/badge";
@@ -55,23 +58,29 @@ function ArchitectureNode({ data }: { data: any }) {
     const isExternal = type === "EXTERNALSERVICE";
 
     return (
-        <div
-            className={`
-        flex items-center gap-2 px-3 py-2 border shadow-sm backdrop-blur-sm transition-all
-        hover:shadow-md hover:scale-[1.02] cursor-pointer
-        ${isFile ? "rounded-lg" : isExternal ? "rounded-xl rotate-0" : "rounded-full"}
-      `}
-            style={{
-                borderColor: color,
-                backgroundColor: `${color}15`,
-                minWidth: isFile ? "140px" : "auto",
-            }}
-        >
-            <Icon className="h-3.5 w-3.5 shrink-0" style={{ color }} />
-            <span className="text-xs font-semibold text-foreground truncate max-w-[160px]">
-                {data.label}
-            </span>
-        </div>
+        <>
+            <Handle type="target" position={Position.Left} />
+
+            <div
+                className={`
+                flex items-center gap-2 px-3 py-2 border shadow-sm backdrop-blur-sm
+                hover:shadow-md hover:scale-[1.02] cursor-pointer
+                ${isFile ? "rounded-lg" : isExternal ? "rounded-xl" : "rounded-full"}
+                `}
+                style={{
+                    borderColor: color,
+                    backgroundColor: `${color}15`,
+                    minWidth: isFile ? "140px" : "auto",
+                }}
+            >
+                <Icon className="h-3.5 w-3.5 shrink-0" style={{ color }} />
+                <span className="text-xs font-semibold truncate max-w-[160px]">
+                    {data.label}
+                </span>
+            </div>
+
+            <Handle type="source" position={Position.Right} />
+        </>
     );
 }
 
@@ -108,7 +117,9 @@ interface ChatMsg {
 }
 
 /* ───── Main Graph Page ──────────────────────────────────────────────── */
-
+const edgeTypes = {
+    smoothstep: SmoothStepEdge,
+};
 function GraphPageInner() {
     const searchParams = useSearchParams();
     const workspaceId = searchParams.get("workspaceId") || "";
@@ -160,16 +171,30 @@ function GraphPageInner() {
             const data = await graphApi.entryFiles(workspaceId, activeRepoId);
             const files: { file: string; functions: string[] }[] = data.files || data || [];
             const newNodes: Node[] = [];
+            const radius = 300;
+            const centerX = 500;
+            const centerY = 350;
 
             files.forEach((f: any, i: number) => {
+                const angle = (i / files.length) * Math.PI * 2;
+
+                const x = centerX + radius * Math.cos(angle);
+                const y = centerY + radius * Math.sin(angle);
+
                 const filePath = f.file || f.filePath;
                 const nodeId = `file:${filePath}`;
+
                 const node: Node = {
                     id: nodeId,
-                    position: { x: 100, y: 100 + i * 100 },
+                    position: { x, y },
                     type: "architectureNode",
-                    data: { label: filePath.split("/").pop() || filePath, type: "FILE", filePath },
+                    data: {
+                        label: filePath.split("/").pop() || filePath,
+                        type: "FILE",
+                        filePath,
+                    },
                 };
+
                 newNodes.push(node);
                 nodeRegistry.current.set(nodeId, node);
             });
@@ -220,29 +245,42 @@ function GraphPageInner() {
 
             const newNodes: Node[] = [];
             const newEdges: Edge[] = [];
+            
+            const radius = 220;
 
             entities.forEach((ent: any, i: number) => {
-                const entId = `fn:${filePath}:${ent.name}`;
-                if (nodeRegistry.current.has(entId)) {
-                    // Deduplicate — just add edge
-                    newEdges.push(makeEdge(`${nodeId}->${entId}`, nodeId, entId, "DECLARES"));
-                    return;
-                }
+            const entId = `fn:${filePath}:${ent.name}`;
 
-                const node: Node = {
-                    id: entId,
-                    position: { x: parentNode.position.x + 260, y: parentNode.position.y + i * 70 },
-                    type: "architectureNode",
-                    data: {
-                        label: ent.name,
-                        type: ent.type || ent.kind || "FUNCTION",
-                        filePath,
-                    },
-                };
-                newNodes.push(node);
-                nodeRegistry.current.set(entId, node);
+            const angle = (i / entities.length) * Math.PI * 2;
+
+            const posX = parentNode.position.x + radius * Math.cos(angle);
+            const posY = parentNode.position.y + radius * Math.sin(angle);
+
+            if (nodeRegistry.current.has(entId)) {
+                // node already exists → only connect
                 newEdges.push(makeEdge(`${nodeId}->${entId}`, nodeId, entId, "DECLARES"));
-            });
+                return;
+            }
+
+            const node: Node = {
+                id: entId,
+                position: {
+                    x: posX,
+                    y: posY
+                },
+                type: "architectureNode",
+                data: {
+                    label: ent.name,
+                    type: ent.type || ent.kind || "FUNCTION",
+                    filePath,
+                },
+            };
+
+            newNodes.push(node);
+            nodeRegistry.current.set(entId, node);
+
+            newEdges.push(makeEdge(`${nodeId}->${entId}`, nodeId, entId, "DECLARES"));
+        });
 
             if (newNodes.length > 0 || newEdges.length > 0) {
                 setNodes(nds => [...nds, ...newNodes]);
@@ -268,44 +306,63 @@ function GraphPageInner() {
 
             const newNodes: Node[] = [];
             const newEdges: Edge[] = [];
-            let offset = 0;
+
+            const radius = 260;
+            const total = internal.length + external.length;
+            let index = 0;
 
             internal.forEach((call: any) => {
                 const targetFile = call.file || call.filePath || "";
                 const targetId = `fn:${targetFile}:${call.name}`;
 
+                const angle = (index / total) * Math.PI * 2;
+
+                const posX = parentNode.position.x + radius * Math.cos(angle);
+                const posY = parentNode.position.y + radius * Math.sin(angle);
+
                 if (nodeRegistry.current.has(targetId)) {
-                    // Dedup: draw edge to existing
                     newEdges.push(makeEdge(`${nodeId}->${targetId}`, nodeId, targetId, "CALLS"));
                 } else {
                     const node: Node = {
                         id: targetId,
-                        position: { x: parentNode.position.x + 280, y: parentNode.position.y + offset * 70 },
+                        position: { x: posX, y: posY },
                         type: "architectureNode",
                         data: { label: call.name, type: "FUNCTION", filePath: targetFile },
                     };
+
                     newNodes.push(node);
                     nodeRegistry.current.set(targetId, node);
+
                     newEdges.push(makeEdge(`${nodeId}->${targetId}`, nodeId, targetId, "CALLS"));
-                    offset++;
                 }
+
+                index++;
             });
 
             external.forEach((ext: any) => {
-                const extId = `ext:${ext.name}`;
-                if (!nodeRegistry.current.has(extId)) {
-                    const node: Node = {
-                        id: extId,
-                        position: { x: parentNode.position.x + 280, y: parentNode.position.y + offset * 70 },
-                        type: "architectureNode",
-                        data: { label: ext.name, type: "EXTERNALSERVICE" },
-                    };
-                    newNodes.push(node);
-                    nodeRegistry.current.set(extId, node);
-                    offset++;
-                }
-                newEdges.push(makeEdge(`${nodeId}->${extId}`, nodeId, extId, "CALLS_EXTERNAL"));
-            });
+            const extId = `ext:${ext.name}`;
+
+            const angle = (index / total) * Math.PI * 2;
+
+            const posX = parentNode.position.x + radius * Math.cos(angle);
+            const posY = parentNode.position.y + radius * Math.sin(angle);
+
+            if (!nodeRegistry.current.has(extId)) {
+                const node: Node = {
+                    id: extId,
+                    position: { x: posX, y: posY },
+                    type: "architectureNode",
+                    data: { label: ext.name, type: "EXTERNALSERVICE" },
+                };
+
+                newNodes.push(node);
+                nodeRegistry.current.set(extId, node);
+            }
+
+            newEdges.push(makeEdge(`${nodeId}->${extId}`, nodeId, extId, "CALLS_EXTERNAL"));
+
+            index++;
+        });
 
             if (newNodes.length > 0 || newEdges.length > 0) {
                 setNodes(nds => [...nds, ...newNodes]);
@@ -446,6 +503,9 @@ function GraphPageInner() {
                             proOptions={{ hideAttribution: true }}
                             minZoom={0.2}
                             maxZoom={2}
+                            edgeTypes={edgeTypes}
+                            defaultEdgeOptions={{ type: "smoothstep" }}
+                            connectionLineType={ConnectionLineType.SmoothStep}
                         >
                             <Background color="var(--border)" gap={24} size={1} />
                             <Controls className="fill-foreground !bg-card border-border" />
