@@ -61,3 +61,15 @@ class PRRequest(BaseModel):
 # ── /llm/embed
 class EmbedRequest(BaseModel):
     code: str
+
+# ── /llm/rag
+class RAGContext(BaseModel):
+    entityName: str = ""
+    kind: str = ""
+    filePath: str = ""
+    code: str = ""
+    docBlock: str = ""
+
+class RAGRequest(BaseModel):
+    query: str
+    contexts: list[RAGContext] = []

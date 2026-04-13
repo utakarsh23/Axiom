@@ -37,12 +37,21 @@ const verifyToken = (req: Request, res: Response): void => {
   try {
     const authHeader = req.headers['authorization'];
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({ error: 'Authorization header missing' });
+    // Primary: read from Authorization header
+    // Fallback: read from `token` cookie (set by frontend during login)
+    let token = '';
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.slice(7);
+    } else if (req.headers.cookie) {
+      const match = req.headers.cookie.match(/(?:^|;\s*)token=([^;]+)/);
+      if (match) token = match[1];
+    }
+
+    if (!token) {
+      res.status(401).json({ error: 'Authorization header or token cookie missing' });
       return;
     }
 
-    const token   = authHeader.slice(7);
     const payload = verifyJwt(token);
 
     // NGINX reads this via auth_request_set $user_id and injects x-user-id downstream

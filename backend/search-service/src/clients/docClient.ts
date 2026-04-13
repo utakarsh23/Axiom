@@ -21,7 +21,7 @@ const getEntityDoc = async (
 ): Promise<DocBlock | null> => {
   try {
     const response = await axios.get<{ doc: DocBlock }>(
-      `${config.docService.url}/docs/${workspaceId}/entity/${entityId}`
+      `${config.docService.url}/docs/${workspaceId}/entity/${encodeURIComponent(entityId)}`
     );
     return response.data.doc ?? null;
   } catch (err: any) {

@@ -429,12 +429,7 @@ function GraphPageInner() {
                 topK: 5,
             });
 
-            const results = data.results || [];
-            const answer = results.length > 0
-                ? results.map((r: any) =>
-                    `**${r.entityName || r.name || "Result"}** (${r.repoId || ""})\nScore: ${r.score?.toFixed(3) || "N/A"}\n${r.docBlock || r.code || r.description || ""}`
-                ).join("\n\n---\n\n")
-                : "No results found. Try rephrasing your question.";
+            const answer = data.answer || "No relevant information found. Try rephrasing your question.";
 
             setChatMsgs(prev => [...prev, { id: `resp-${Date.now()}`, role: "assistant", content: answer }]);
         } catch (err: any) {

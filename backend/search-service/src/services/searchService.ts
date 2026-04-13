@@ -1,6 +1,8 @@
 import { queryVector, VectorResult } from '../clients/vectorClient';
 import { getEntityNeighbourhood } from '../clients/graphClient';
 import { getEntityDoc } from '../clients/docClient';
+import axios from 'axios';
+import { config } from '../config';
 import logger from '../logger';
 
 // Shape of a fully enriched search result returned to the caller
@@ -11,8 +13,15 @@ interface SearchResult {
   filePath: string;
   score: number;          // semantic similarity score from Vector Service
   docBlock: string | null; // LLM-generated documentation, null if not yet generated
+  code: string;           // raw source code from Vector Service
   callers: string[];      // names of entities that call this entity (1-hop upstream)
   callees: string[];      // names of entities this entity calls (1-hop downstream)
+}
+
+// Full RAG response — LLM answer + source results
+interface RAGResponse {
+  answer: string;
+  results: SearchResult[];
 }
 
 // Shape of the incoming search request
@@ -51,16 +60,40 @@ const enrichResult = async (
     filePath:   hit.filePath,
     score:      hit.score,
     docBlock:   doc?.docBlock ?? null,
+    code:       hit.code ?? '',
     callers:    neighbourhood.upstream.map((n) => n.name),
     callees:    neighbourhood.downstream.map((n) => n.name),
   };
 };
 
-// Orchestrates the full search pipeline:
+// Calls LLM Service /llm/rag to generate a natural language answer from retrieved context
+const generateRAGAnswer = async (query: string, results: SearchResult[]): Promise<string> => {
+  try {
+    const contexts = results.map((r) => ({
+      entityName: r.entityName,
+      kind:       r.kind,
+      filePath:   r.filePath,
+      code:       r.code,
+      docBlock:   r.docBlock ?? '',
+    }));
+
+    const response = await axios.post<{ answer: string }>(
+      `${config.llmService.url}/llm/rag`,
+      { query, contexts }
+    );
+
+    return response.data.answer ?? 'No answer generated.';
+  } catch (err) {
+    logger.error({ err }, 'LLM RAG generation failed — returning results without answer');
+    return 'I found relevant code but could not generate an answer. See the source results below.';
+  }
+};
+
+// Orchestrates the full RAG pipeline:
 // 1. Vector Service — semantic similarity search to get candidate entities
 // 2. Graph Service + Doc Service — enrich each candidate in parallel
-// Returns results sorted by descending similarity score.
-const handleSearch = async (req: SearchRequest): Promise<SearchResult[]> => {
+// 3. LLM Service — generate natural language answer from enriched context
+const handleSearch = async (req: SearchRequest): Promise<RAGResponse> => {
   validateSearchRequest(req);
 
   const topK = req.topK ?? 10;
@@ -75,7 +108,7 @@ const handleSearch = async (req: SearchRequest): Promise<SearchResult[]> => {
   }
 
   if (vectorHits.length === 0) {
-    return [];
+    return { answer: 'No relevant code found for your query.', results: [] };
   }
 
   // Enrich all hits concurrently — graph + doc fetches per hit run in parallel
@@ -86,12 +119,15 @@ const handleSearch = async (req: SearchRequest): Promise<SearchResult[]> => {
   // Sort by descending score — highest similarity first
   enriched.sort((a, b) => b.score - a.score);
 
+  // Generate LLM answer from the top results
+  const answer = await generateRAGAnswer(req.query, enriched);
+
   logger.info(
     { workspaceId: req.workspaceId, query: req.query, resultCount: enriched.length },
-    'Search completed'
+    'RAG search completed'
   );
 
-  return enriched;
+  return { answer, results: enriched };
 };
 
-export { handleSearch, SearchRequest, SearchResult };
+export { handleSearch, SearchRequest, SearchResult, RAGResponse };

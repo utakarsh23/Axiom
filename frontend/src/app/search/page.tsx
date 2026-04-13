@@ -62,28 +62,27 @@ function SearchPageInner() {
         setIsLoading(true);
 
         try {
-            const data = await searchApi.query({ workspaceId, query: userMsg.content, topK: 10 });
+            const data = await searchApi.query({ workspaceId, query: userMsg.content, topK: 5 });
+            const answer = data.answer || "";
             const results = data.results || [];
 
-            let content = "";
             const citations: ChatMessage["citations"] = [];
 
+            // Build citations from source results
             if (results.length > 0) {
-                content = results
-                    .map((r: any, i: number) => {
-                        if (r.entityName || r.name) {
-                            citations!.push({
-                                text: r.entityName || r.name,
-                                nodeId: r.entityId || r.id || "",
-                                type: r.type || r.kind || "Entity",
-                            });
-                        }
-                        return `**${i + 1}. ${r.entityName || r.name || "Result"}**\nScore: ${r.score?.toFixed(3) || "N/A"}\n${r.docBlock || r.code || r.description || ""}`;
-                    })
-                    .join("\n\n---\n\n");
-            } else {
-                content = "No results found. Try different search terms or check that the workspace has been ingested.";
+                results.forEach((r: any) => {
+                    const name = r.entityName || r.name;
+                    if (name) {
+                        citations.push({
+                            text: name,
+                            nodeId: r.entityId || r.id || "",
+                            type: r.kind || r.type || "Entity",
+                        });
+                    }
+                });
             }
+
+            const content = answer || "No relevant information found. Try different search terms.";
 
             setMessages((prev) => [
                 ...prev,

@@ -10,6 +10,7 @@ interface VectorResult {
   filePath: string;
   kind: string;
   score: number;   // cosine similarity — higher is more relevant
+  code: string;
 }
 
 // Sends the query embedding request to Vector Service.
@@ -20,11 +21,22 @@ const queryVector = async (
   topK: number = 10
 ): Promise<VectorResult[]> => {
   try {
-    const response = await axios.post<{ results: VectorResult[] }>(
+    const response = await axios.post<{ results: any[] }>(
       `${config.vectorService.url}/vector/query`,
       { workspaceId, query: queryText, topK }
     );
-    return response.data.results ?? [];
+
+    // Vector Service returns { entityId, score, metadata, code }
+    // Map metadata fields to the flat VectorResult shape
+    return (response.data.results ?? []).map((r: any) => ({
+      entityId:    r.entityId,
+      workspaceId: r.metadata?.workspaceId ?? workspaceId,
+      entityName:  r.metadata?.entityName ?? r.entityName ?? '',
+      filePath:    r.metadata?.filePath ?? r.filePath ?? '',
+      kind:        r.metadata?.kind ?? r.kind ?? '',
+      score:       r.score ?? 0,
+      code:        r.code ?? '',
+    }));
   } catch (err) {
     logger.error({ err, workspaceId }, 'Vector Service query failed');
     throw err;

@@ -51,6 +51,13 @@ Return your response IN STRICT JSON FORMAT with these fields:
 "riskScore": "LOW" or "MEDIUM" or "HIGH"
 "explanation": brief explanation of what the patch does
 
+RISK SCORING GUIDE (follow strictly):
+- LOW risk + LOW severity: Simple, mechanical fixes. Examples: replacing a weak hash algorithm (md5→sha256), replacing Math.random() with crypto.randomUUID(), adding missing input trim/validation, fixing a typo in error messages, removing leftover console.log/debugger statements.
+- MEDIUM risk + MEDIUM severity: Logic changes with limited scope. Examples: adding parameterized queries to replace string concatenation in SQL, adding input sanitization, replacing eval() with a safe parser, adding rate limiting.
+- HIGH risk + HIGH severity: Changes that alter authentication flows, modify public API contracts, touch secrets management, or rewrite large blocks of business logic. Examples: rewriting entire auth middleware, removing endpoints, changing encryption schemes.
+
+IMPORTANT: Most single-function fixes with < 10 lines changed should be LOW or MEDIUM. Only use HIGH when the fix fundamentally changes how the code operates or could break callers.
+
 Findings:
 {findings_str}
 
@@ -85,6 +92,39 @@ Explanation: {req.explanation}
 
 Diff:
 {req.unifiedDiff}"""
+
+    response = model.generate_content(prompt)
+    return response.text
+
+
+def generate_rag_answer(req) -> str:
+    context_blocks = []
+    for i, ctx in enumerate(req.contexts):
+        block = f"--- Context {i+1} ---"
+        if ctx.entityName:
+            block += f"\nEntity: {ctx.entityName}"
+        if ctx.kind:
+            block += f" ({ctx.kind})"
+        if ctx.filePath:
+            block += f"\nFile: {ctx.filePath}"
+        if ctx.docBlock:
+            block += f"\nDocumentation:\n{ctx.docBlock}"
+        if ctx.code:
+            block += f"\nCode:\n{ctx.code}"
+        context_blocks.append(block)
+
+    context_str = "\n\n".join(context_blocks) if context_blocks else "No context available."
+
+    prompt = f"""You are Axiom, a codebase intelligence assistant. Answer the user's question using ONLY the retrieved code context below. Be concise, specific, and reference entity names and file paths when relevant.
+
+If the context doesn't contain enough information to fully answer, say so clearly.
+
+Retrieved Context:
+{context_str}
+
+User Question: {req.query}
+
+Answer:"""
 
     response = model.generate_content(prompt)
     return response.text

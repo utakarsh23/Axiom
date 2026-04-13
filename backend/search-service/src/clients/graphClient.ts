@@ -25,7 +25,7 @@ const getEntityNeighbourhood = async (
 ): Promise<EntityNeighbourhood> => {
   try {
     const response = await axios.get<EntityNeighbourhood>(
-      `${config.graphService.url}/graph/${workspaceId}/impact/${entityName}`
+      `${config.graphService.url}/graph/${workspaceId}/impact/${encodeURIComponent(entityName)}`
     );
     return response.data;
   } catch (err) {

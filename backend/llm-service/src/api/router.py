@@ -1,6 +1,6 @@
 from fastapi import APIRouter
-from src.models.schemas import ExplainRequest, WhatIfRequest, PatchRequest, PRRequest, EmbedRequest
-from src.llm.provider import generate_explanation, generate_whatif, generate_patch, generate_pr
+from src.models.schemas import ExplainRequest, WhatIfRequest, PatchRequest, PRRequest, EmbedRequest, RAGRequest
+from src.llm.provider import generate_explanation, generate_whatif, generate_patch, generate_pr, generate_rag_answer
 from src.embeddings.provider import getEmbeddings
 
 router = APIRouter(prefix="/llm")
@@ -24,3 +24,7 @@ async def pr(req: PRRequest):
 @router.post("/embed")
 async def embed(req: EmbedRequest):
     return {"vector": getEmbeddings(req.code)}
+
+@router.post("/rag")
+async def rag(req: RAGRequest):
+    return {"answer": generate_rag_answer(req)}
