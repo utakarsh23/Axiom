@@ -6,20 +6,20 @@ import { GraphNode } from './graphClient';
 
 // Input sent to LLM Service for patch generation
 interface PatchRequest {
-  findings:            Finding[];
-  entityCode:          string;
-  callers:             GraphNode[];
-  callees:             GraphNode[];
-  similarSafePatterns: string[];   // optional — code strings from Vector Service
+  findings: Finding[];
+  entityCode: string;
+  callers: (GraphNode & { code?: string })[];
+  callees: (GraphNode & { code?: string })[];
+  similarSafePatterns: string[];
 }
 
 // Output received from LLM Service after patch generation
 interface PatchResponse {
   confirmedViolations: string[];
-  severity:            'LOW' | 'MEDIUM' | 'HIGH';
-  unifiedDiff:         string;
-  riskScore:           'LOW' | 'MEDIUM' | 'HIGH';
-  explanation:         string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH';
+  unifiedDiff: string;
+  riskScore: 'LOW' | 'MEDIUM' | 'HIGH';
+  explanation: string;
 }
 
 // Sends structured findings and entity context to LLM Service.

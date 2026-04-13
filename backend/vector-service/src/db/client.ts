@@ -21,6 +21,9 @@ async function getCollection(workspaceId: string): Promise<Collection> {
   const name = `workspace-${workspaceId}`;
   return client.getOrCreateCollection({
     name,
+    // Provide a dummy embedding function since we compute embeddings manually via LLM service.
+    // This prevents Chroma from attempting to load @chroma-core/default-embed
+    embeddingFunction: { generate: async (texts: string[]) => texts.map(() => []) } as any,
     // cosine distance required — vectorService score formula (1 - distance) is only
     // valid when distance is in [0, 2] range, which cosine guarantees
     metadata: { workspaceId, 'hnsw:space': 'cosine' },

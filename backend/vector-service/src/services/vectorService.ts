@@ -17,6 +17,19 @@ interface VectorQueryRequest {
   topK?: number;
 }
 
+// Request shape for fetching entities by their IDs
+interface EntityFetchRequest {
+  workspaceId: string;
+  entityIds: string[];
+}
+
+// Result shape for each fetched entity
+interface EntityFetchResult {
+  entityId: string;
+  code: string;
+  metadata: Record<string, string>;
+}
+
 // Generates an embedding for the query text by calling LLM Service /llm/embed.
 // The same embedding model is used for both indexing and querying —
 // this ensures the query vector lives in the same space as stored vectors.
@@ -88,4 +101,42 @@ async function handleVectorQuery(body: VectorQueryRequest): Promise<VectorQueryR
   return queryVector(workspaceId, query, topK ?? 10);
 }
 
-export { queryVector, handleVectorQuery, VectorQueryResult, VectorQueryRequest };
+
+async function fetchEntitiesByIds(
+  workspaceId: string,
+  entityIds: string[]
+): Promise<EntityFetchResult[]> {
+  try {
+    const collection = await getCollection(workspaceId);
+    const uniqueIds = Array.from(new Set(entityIds));
+    const results = await collection.get({
+      ids: uniqueIds,
+      include: ['metadatas', 'documents'],
+    });
+    const fetchResults: EntityFetchResult[] = results.ids.map((id, i) => ({
+      entityId: id,
+      code: results.documents?.[i] ?? '',
+      metadata: (results.metadatas?.[i] ?? {}) as Record<string, string>,
+    }));
+    logger.info({ workspaceId, requested: entityIds.length, found: fetchResults.length }, 'Entity fetch by IDs completed');
+    return fetchResults;
+  } catch (err) {
+    logger.error({ err, workspaceId }, 'Entity fetch by IDs failed');
+    throw err;
+  }
+}
+
+// Entry point called by the router — validates input and delegates to fetchEntitiesByIds.
+async function handleEntityFetch(body: EntityFetchRequest): Promise<EntityFetchResult[]> {
+  const { workspaceId, entityIds } = body;
+  if (!workspaceId || !entityIds?.length) {
+    throw Object.assign(new Error('workspaceId and entityIds are required'), { status: 400 });
+  }
+  return fetchEntitiesByIds(workspaceId, entityIds);
+}
+
+
+
+
+
+export { queryVector, handleVectorQuery, handleEntityFetch, fetchEntitiesByIds, EntityFetchResult, EntityFetchRequest, VectorQueryResult, VectorQueryRequest };

@@ -37,8 +37,8 @@ function ImpactPageInner() {
         }
     };
 
-    const callers = result?.callers || result?.dependents || [];
-    const callees = result?.callees || result?.dependencies || [];
+    const callers = result?.upstream || [];
+    const callees = result?.downstream || [];
     const impacted = result?.impactedEndpoints || result?.affected || [];
 
     return (

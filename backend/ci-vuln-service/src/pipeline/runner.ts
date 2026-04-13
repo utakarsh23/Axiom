@@ -66,7 +66,7 @@ const runPipeline = async (payload: EntityEventPayload): Promise<void> => {
 
   // ── Tier 3 — LLM confirmation + patch generation ─────────────────────────
   const context = await assembleContext(payload, allFindings);
-  const patch   = await requestPatch(context);
+  const patch = await requestPatch(context);
 
   logger.info(
     { entityId, riskScore: patch.riskScore, severity: patch.severity },

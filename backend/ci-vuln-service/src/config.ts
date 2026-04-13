@@ -12,15 +12,16 @@ const config = {
 
   // Internal service URLs — all on Docker internal network
   services: {
-    graph:     process.env.GRAPH_SERVICE_URL     ?? 'http://localhost:9002',
+    graph: process.env.GRAPH_SERVICE_URL ?? 'http://localhost:9002',
     workspace: process.env.WORKSPACE_SERVICE_URL ?? 'http://localhost:9000',
-    llm:       process.env.LLM_SERVICE_URL       ?? 'http://localhost:9004',
+    llm: process.env.LLM_SERVICE_URL ?? 'http://localhost:9004',
     ingestion: process.env.INGESTION_SERVICE_URL ?? 'http://localhost:9001',
+    vector: process.env.VECTOR_SERVICE_URL ?? 'http://localhost:9003',
   },
 
   github: {
-    appId:          process.env.GITHUB_APP_ID          ?? '',
-    privateKey:     process.env.GITHUB_PRIVATE_KEY     ?? '',
+    appId: process.env.GITHUB_APP_ID ?? '',
+    privateKey: process.env.GITHUB_PRIVATE_KEY ?? '',
     installationId: process.env.GITHUB_INSTALLATION_ID ?? '',
   },
 

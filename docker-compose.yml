@@ -18,6 +18,7 @@ services:
     container_name: axiom-nginx
     restart: unless-stopped
     networks: [axiom]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     ports:
       - "80:80"
     volumes:
@@ -43,6 +44,7 @@ services:
     container_name: axiom-frontend
     restart: unless-stopped
     networks: [axiom]
+    extra_hosts: ["host.docker.internal:host-gateway"]
 
   # ── Services ─────────────────────────────────────────────────────────────────
 
@@ -51,6 +53,7 @@ services:
     container_name: axiom-auth
     restart: unless-stopped
     networks: [axiom]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     env_file: ./backend/auth-service/.env
     environment:
       MONGO_URI: mongodb://host.docker.internal:27017/auth-service
@@ -60,6 +63,7 @@ services:
     container_name: axiom-workspace
     restart: unless-stopped
     networks: [axiom]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     env_file: ./backend/workspace-service/.env
     environment:
       MONGO_URI: mongodb://host.docker.internal:27017/workspace-service
@@ -70,6 +74,7 @@ services:
     container_name: axiom-ingestion
     restart: unless-stopped
     networks: [axiom]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     env_file: ./backend/ingestion-service/.env
     environment:
       MONGODB_URI: mongodb://host.docker.internal:27017
@@ -80,6 +85,7 @@ services:
     container_name: axiom-graph
     restart: unless-stopped
     networks: [axiom]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     env_file: ./backend/graph-service/.env
     environment:
       NEO4J_URI: bolt://host.docker.internal:7687
@@ -90,42 +96,48 @@ services:
     container_name: axiom-vector
     restart: unless-stopped
     networks: [axiom]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     env_file: ./backend/vector-service/.env
     environment:
       CHROMA_URL: http://host.docker.internal:8000
       NATS_URL: nats://host.docker.internal:4222
       LLM_SERVICE_URL: http://llm-service:9004
+    depends_on: [llm-service]
 
   documentation-service:
     build: ./backend/documentation-service
     container_name: axiom-docs
     restart: unless-stopped
     networks: [axiom]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     env_file: ./backend/documentation-service/.env
     environment:
       MONGO_URI: mongodb://host.docker.internal:27017/documentation-service
       NATS_URL: nats://host.docker.internal:4222
       LLM_SERVICE_URL: http://llm-service:9004
       GRAPH_SERVICE_URL: http://graph-service:9002
-    depends_on: [graph-service]
+    depends_on: [graph-service, llm-service]
 
   search-service:
     build: ./backend/search-service
     container_name: axiom-search
     restart: unless-stopped
     networks: [axiom]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     env_file: ./backend/search-service/.env
     environment:
       VECTOR_SERVICE_URL: http://vector-service:9003
       GRAPH_SERVICE_URL: http://graph-service:9002
       DOC_SERVICE_URL: http://documentation-service:9005
-    depends_on: [vector-service, graph-service, documentation-service]
+      LLM_SERVICE_URL: http://llm-service:9004
+    depends_on: [vector-service, graph-service, documentation-service, llm-service]
 
   ci-vuln-service:
     build: ./backend/ci-vuln-service
     container_name: axiom-ci
     restart: unless-stopped
     networks: [axiom]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     env_file: ./backend/ci-vuln-service/.env
     environment:
       NATS_URL: nats://host.docker.internal:4222
@@ -133,4 +145,17 @@ services:
       WORKSPACE_SERVICE_URL: http://workspace-service:9000
       LLM_SERVICE_URL: http://llm-service:9004
       INGESTION_SERVICE_URL: http://ingestion-service:9001
-    depends_on: [graph-service, workspace-service]
+      VECTOR_SERVICE_URL: http://vector-service:9003
+    depends_on: [graph-service, workspace-service, llm-service, vector-service]
+
+
+  llm-service:
+    build: ./backend/llm-service
+    container_name: axiom-llm
+    restart: unless-stopped
+    networks: [axiom]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    env_file: ./backend/llm-service/.env
+    environment:
+      MODEL_NAME: all-MiniLM-L6-v2
+      GEMINI_MODEL: gemini-flash-latest
